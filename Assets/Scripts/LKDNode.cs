@@ -17,8 +17,8 @@ public struct LKDSplitPlane
 
 public struct LKDNode
 {
-    public Vector3 center;
-    public Vector3 size;
+    public Vector3 min;
+    public Vector3 max;
     public int leftChild;
     public int rightChild;
     public int dataBegin;
@@ -233,10 +233,13 @@ public struct LKDNode
         if (si.z <= 0)
             si.z = 0.1f;
 
+        min = ct - si * 0.5f;
+        max = ct + si * 0.5f;
+
         return new LKDNode
         {
-            center = ct,
-            size = si,
+            min = min,
+            max = max,
             leftChild = -1,
             rightChild = -1,
             dataBegin = dataBegin,
@@ -252,19 +255,15 @@ public struct LKDNode
         if (left >= 0 && left < nodes.Count)
         {
             LKDNode leftnode = nodes[left];
-            Vector3 lmin = leftnode.center - leftnode.size * 0.5f;
-            Vector3 lmax = leftnode.center + leftnode.size * 0.5f;
-            min = Vector3.Min(min, lmin);
-            max = Vector3.Min(max, lmax);
+            min = Vector3.Min(min, leftnode.min);
+            max = Vector3.Min(max, leftnode.max);
         }
 
         if (right >= 0 && right < nodes.Count)
         {
             LKDNode rightnode = nodes[right];
-            Vector3 rmin = rightnode.center - rightnode.size * 0.5f;
-            Vector3 rmax = rightnode.center + rightnode.size * 0.5f;
-            min = Vector3.Min(min, rmin);
-            max = Vector3.Min(max, rmax);
+            min = Vector3.Min(min, rightnode.min);
+            max = Vector3.Min(max, rightnode.max);
         }
 
         Vector3 si = max - min;
@@ -277,10 +276,13 @@ public struct LKDNode
         if (si.z <= 0)
             si.z = 0.1f;
 
+        min = ct - si * 0.5f;
+        max = ct + si * 0.5f;
+
         return new LKDNode
         {
-            center = ct,
-            size = si,
+            min = min,
+            max = max,
             dataBegin = -1,
             dataEnd = -1,
             leftChild = left,
