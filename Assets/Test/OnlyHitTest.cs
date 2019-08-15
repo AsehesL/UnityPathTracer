@@ -21,6 +21,10 @@ public class OnlyHitTest : MonoBehaviour
     private Material m_Material;
 
 
+    private List<LKDNode> testTree;
+    private List<Triangle> testDatas;
+    private int testroot;
+
     void Start()
     {
         m_Material = new Material(shader);
@@ -59,6 +63,10 @@ public class OnlyHitTest : MonoBehaviour
         List<Triangle> datas = null;
         List<LKDNode> nodes = null;
         int root = LKDNode.BuildKDTree(triangles, 0, 5, ref nodes, ref datas);
+
+        testTree = nodes;
+        testDatas = datas;
+        testroot = root;
 
         int sizeofnode = System.Runtime.InteropServices.Marshal.SizeOf(typeof(LKDNode));
         int sizeoftriangle = System.Runtime.InteropServices.Marshal.SizeOf(typeof(Triangle));
@@ -118,5 +126,74 @@ public class OnlyHitTest : MonoBehaviour
             return;
         m_Material.SetPass(0);
         Graphics.DrawProceduralIndirect(MeshTopology.Points, m_ArgsBuffer);
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        
+
+        if (testDatas != null && testTree != null && testroot >= 0 && testroot < testTree.Count)
+        {
+            LKDNode node = testTree[testroot];
+            Stack<LKDNode> stacks = new Stack<LKDNode>();
+            stacks.Push(node);
+            while (stacks.Count > 0)
+            {
+                LKDNode root = stacks.Pop();
+
+                Gizmos.color = Color.black;
+
+                Vector3 bv0 = root.min;
+                Vector3 bv1 = new Vector3(root.min.x, root.min.y, root.max.z);
+                Vector3 bv2 = new Vector3(root.max.x, root.min.y, root.max.z);
+                Vector3 bv3 = new Vector3(root.max.x, root.min.y, root.min.z);
+
+                Vector3 bv4 = new Vector3(root.min.x, root.max.y, root.min.z);
+                Vector3 bv5 = new Vector3(root.min.x, root.max.y, root.max.z);
+                Vector3 bv6 = root.max;
+                Vector3 bv7 = new Vector3(root.max.x, root.max.y, root.min.z);
+
+                Gizmos.DrawLine(bv0, bv1);
+                Gizmos.DrawLine(bv1, bv2);
+                Gizmos.DrawLine(bv2, bv3);
+                Gizmos.DrawLine(bv3, bv0);
+                Gizmos.DrawLine(bv4, bv5);
+                Gizmos.DrawLine(bv5, bv6);
+                Gizmos.DrawLine(bv6, bv7);
+                Gizmos.DrawLine(bv7, bv4);
+                Gizmos.DrawLine(bv0, bv4);
+                Gizmos.DrawLine(bv1, bv5);
+                Gizmos.DrawLine(bv2, bv6);
+                Gizmos.DrawLine(bv3, bv7);
+
+
+
+                if (root.dataBegin >= 0 && root.dataBegin < testDatas.Count && root.dataEnd >= 0 && root.dataEnd < testDatas.Count)
+                {
+                    for (int i = root.dataBegin; i <= root.dataEnd; i++)
+                    {
+                        Gizmos.color = Color.green;
+                        Vector3 v0 = testDatas[i].vertex0;
+                        Vector3 v1 = testDatas[i].vertex1;
+                        Vector3 v2 = testDatas[i].vertex2;
+
+                        Gizmos.DrawLine(v0, v1);
+                        Gizmos.DrawLine(v0, v2);
+                        Gizmos.DrawLine(v1, v2);
+                    }
+                }
+                else
+                {
+                    if (root.leftChild >= 0 && root.leftChild < testTree.Count)
+                    {
+                        stacks.Push(testTree[root.leftChild]);
+                    }
+                    if (root.rightChild >= 0 && root.rightChild < testTree.Count)
+                    {
+                        stacks.Push(testTree[root.rightChild]);
+                    }
+                }
+            }
+        }
     }
 }

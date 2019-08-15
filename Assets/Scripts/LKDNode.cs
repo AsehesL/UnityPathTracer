@@ -256,14 +256,14 @@ public struct LKDNode
         {
             LKDNode leftnode = nodes[left];
             min = Vector3.Min(min, leftnode.min);
-            max = Vector3.Min(max, leftnode.max);
+            max = Vector3.Max(max, leftnode.max);
         }
 
         if (right >= 0 && right < nodes.Count)
         {
             LKDNode rightnode = nodes[right];
             min = Vector3.Min(min, rightnode.min);
-            max = Vector3.Min(max, rightnode.max);
+            max = Vector3.Max(max, rightnode.max);
         }
 
         Vector3 si = max - min;
@@ -278,6 +278,7 @@ public struct LKDNode
 
         min = ct - si * 0.5f;
         max = ct + si * 0.5f;
+        
 
         return new LKDNode
         {

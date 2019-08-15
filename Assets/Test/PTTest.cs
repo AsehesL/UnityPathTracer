@@ -51,7 +51,7 @@ public class PTTest : MonoBehaviour
         computeShader.SetInt("_TexWidth", m_RenderTexture.width);
         computeShader.SetInt("_TexHeight", m_RenderTexture.height);
 
-        float h = Camera.main.farClipPlane * Mathf.Tan(Camera.main.fieldOfView * 0.5f * Mathf.Deg2Rad);
+        float h = Camera.main.nearClipPlane * Mathf.Tan(Camera.main.fieldOfView * 0.5f * Mathf.Deg2Rad);
         float w = h * Camera.main.aspect;
 
         computeShader.SetFloat("_Near", Camera.main.nearClipPlane);
@@ -59,7 +59,7 @@ public class PTTest : MonoBehaviour
         computeShader.SetFloat("_NearClipHeight", h);
         computeShader.SetMatrix("_CameraToWorld", Camera.main.transform.localToWorldMatrix);
 
-        computeShader.Dispatch(m_KernelIndex, m_DispatchX, m_DispatchX, 1);
+        computeShader.Dispatch(m_KernelIndex, m_DispatchX, m_DispatchY, 1);
     }
 
     void OnGUI()
