@@ -41,8 +41,37 @@ float4x4 _CameraToWorld;
 TextureCube<float4> _Sky;
 SamplerState _LinearClamp;
 
-int _SampleOffset;
-int _SampleNum;
+//int _SampleOffset;
+//int _SampleNum;
+
+float _Time;
+
+float _Seed = 0;
+
+float2 Rand() {
+	//return float2(frac(sin(_Seed++)*43758.5453123), _Seed - floor(_Seed * (1.0 / 289.0)) * 289.0);
+	float2 p = float2(dot(float2(_Seed, _Seed), float2(127.1, 311.7)),
+		dot(float2(_Seed, _Seed), float2(269.5, 183.3)));
+
+	return -1.0 + 2.0 * frac(sin(p)*43758.5453123);
+}
+
+float3 Jitter(float3 d, float phi, float sina, float cosa) {
+	float3 w = normalize(d), u = normalize(cross(w.yzx, w)), v = cross(w, u);
+	return (u*cos(phi) + v * sin(phi)) * sina + w * cosa;
+}
+
+float3 Hemisphere(float e, float2 sp) {
+	float cos_phi = cos(2.0 * PI * sp.x);
+	float sin_phi = sin(2.0 * PI * sp.x);
+	float cos_theta = pow(1.0 - sp.y, 1.0 / (e + 1.0));
+	float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+	float pu = sin_theta * cos_phi;
+	float pv = sin_theta * sin_phi;
+	float pw = cos_theta;
+
+	return float3(pu, pv, pw);
+}
 
 int RaycastTriangle(float3 dir, float3 orig, Triangle tg, inout float rt, inout float3 hitvertex, inout float3 hitnormal) {
 
@@ -194,18 +223,6 @@ float2 Hammersley2D(uint i, uint N) {
 	return float2(float(i) / float(N), RadicalInverseVdC(i));
 }
 
-float3 Hemisphere(float e, float2 sp) {
-	float cos_phi = cos(2.0 * PI * sp.x);
-	float sin_phi = sin(2.0 * PI * sp.x);
-	float cos_theta = pow(1.0 - sp.y, 1.0 / (e + 1.0));
-	float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
-	float pu = sin_theta * cos_phi;
-	float pv = sin_theta * sin_phi;
-	float pw = cos_theta;
-
-	return float3(pu, pv, pw);
-}
-
 float3 SampleDirection(float3 dir, float2 sp, float e) {
 	float3 w = normalize(dir);
 	float3 u = normalize(cross(float3(0.00424, 1, 0.00764), w));
@@ -219,6 +236,8 @@ float3 SampleDirection(float3 dir, float2 sp, float e) {
 [numthreads(4,4,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
+	_Seed = _Time + (float)(_TexHeight * id.x) / _TexWidth + ((float)id.y) / _TexHeight;
+
 	/*float x = ((((float)id.x) / _TexWidth) * 2.0 - 1.0) * _NearClipWidth;
 	float y = ((((float)id.y) / _TexHeight) * 2.0 - 1.0) * _NearClipHeight;
 
@@ -230,13 +249,13 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	float distance = 9999999;
 	float3 hitnormal = 0, hitvertex = 0;*/
 
-	int spindex = (int)(frac(((float)(id.y * _TexWidth + id.x)) / _SampleNum) * _SampleNum) + _SampleOffset;
+	//int spindex = (int)(frac(((float)(id.y * _TexWidth + id.x)) / _SampleNum) * _SampleNum) + _SampleOffset;
 	//int spindex = (int)(frac((id.y * _TexWidth + id.x) / _SampleNum) * _SampleNum) + _SampleOffset;
 	//int spnum = _TexWidth * _TexHeight;
 	
-	float2 sampleCoord = Hammersley2D(spindex, _SampleNum);
-	float x = ((((float)id.x) / _TexWidth + 1.0 / _TexWidth * sampleCoord.x) * 2.0 - 1.0) * _NearClipWidth;
-	float y = ((((float)id.y) / _TexHeight + 1.0 / _TexHeight * sampleCoord.y) * 2.0 - 1.0) * _NearClipHeight;
+	//float2 sampleCoord = Hammersley2D(spindex, _SampleNum);
+	float x = ((((float)id.x) / _TexWidth) * 2.0 - 1.0) * _NearClipWidth;
+	float y = ((((float)id.y) / _TexHeight) * 2.0 - 1.0) * _NearClipHeight;
 
 	float3 pos = float3(x, y, _Near);
 
@@ -249,13 +268,16 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	float diffuse = 1;
 	float4 col = float4(0,0,0,1);
 
+	float2 sampleCoord = Rand();
+
 	for (int i = 0; i < MAX_DEPTH; i++) {
 		int raycastindex = Raycast(origin, dir, distance, hitvertex, hitnormal);
 
 		if (raycastindex >= 0) {
 			origin = hitvertex;
-			dir = reflect(dir, hitnormal);
-			//dir = SampleDirection(hitnormal, sampleCoord, 0);
+			//dir = reflect(dir, hitnormal);
+			//sampleCoord = Rand();
+			dir = SampleDirection(hitnormal, sampleCoord, 0);
 			diffuse *= max(0, dot(hitnormal, dir));// / PI;
 		}
 		else {
@@ -285,4 +307,8 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	//else {
 	//	_Result[id.xy] = _Sky.SampleLevel(_LinearClamp, dir, 0);
 	//}
+
+	/*float2 rd = Rand();
+
+	_Result[id.xy] = float4(rd.x, rd.y, 0.0, 1.0);*/
 }

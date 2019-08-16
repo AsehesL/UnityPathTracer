@@ -84,7 +84,7 @@ public class PathTracingEffect : MonoBehaviour
 		computeShader.SetInt("_RootNode", root);
 		computeShader.SetInt("_TexWidth", texture.width);
 		computeShader.SetInt("_TexHeight", texture.height);
-		computeShader.SetInt("_SampleNum", 83);
+		//computeShader.SetInt("_SampleNum", 83);
 		computeShader.SetTexture(m_KernelIndex, "_Sky", sky);
 	}
 
@@ -102,8 +102,9 @@ public class PathTracingEffect : MonoBehaviour
 		//if (m_SampleIndex >= 2000)
 		//	m_SampleIndex = 0;
 
-		int offset = Random.Range(0, 82);
-		computeShader.SetInt("_SampleIndex", offset);
+		//int offset = Random.Range(0, 82);
+		//computeShader.SetInt("_SampleIndex", offset);
+		computeShader.SetFloat("_Time", Time.time);
 
 		computeShader.Dispatch(m_KernelIndex, m_DispatchX, m_DispatchY, 1);
 	}
@@ -128,18 +129,18 @@ public class PathTracingEffect : MonoBehaviour
 	{
 		if (m_RenderTexture)
 		{
-			if (!m_TempRt)
+			//if (!m_TempRt)
 			{
 				Graphics.Blit(m_RenderTexture, destination);
-				m_TempRt = RenderTexture.GetTemporary(source.width, source.height);
+			//	m_TempRt = RenderTexture.GetTemporary(source.width, source.height);
 			}
-			else
-			{
-				m_Material.SetTexture("_Cache", m_TempRt);
-				Graphics.Blit(m_RenderTexture, destination, m_Material);
-			}
+			//else
+			//{
+			//	m_Material.SetTexture("_Cache", m_TempRt);
+			//	Graphics.Blit(m_RenderTexture, destination, m_Material);
+			//}
 
-			Graphics.Blit(destination, m_TempRt);
+			//Graphics.Blit(destination, m_TempRt);
 		}
 		else
 			Graphics.Blit(source, destination);
