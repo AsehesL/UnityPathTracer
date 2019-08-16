@@ -41,6 +41,12 @@ float4x4 _CameraToWorld;
 TextureCube<float4> _Sky;
 SamplerState _LinearClamp;
 
+float4 _LightDir;
+float4 _LightColor;
+float _LightIntensity;
+float _LightRange;
+float _SkyHDR;
+
 //int _SampleOffset;
 //int _SampleNum;
 
@@ -233,6 +239,12 @@ float3 SampleDirection(float3 dir, float2 sp, float e) {
 	return h.x * u + h.y * v + h.z * w;
 }
 
+float4 SampleSky(float3 dir) {
+	float4 skycol = _Sky.SampleLevel(_LinearClamp, dir, 0) * _SkyHDR;
+	float4 light = pow(max(0, dot(dir, _LightDir.xyz)), _LightRange) * _LightIntensity * _LightColor;
+	return skycol + light;
+}
+
 [numthreads(4,4,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
@@ -276,12 +288,12 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 		if (raycastindex >= 0) {
 			origin = hitvertex;
 			//dir = reflect(dir, hitnormal);
-			//sampleCoord = Rand();
-			dir = SampleDirection(hitnormal, sampleCoord, 0);
+			sampleCoord = Rand();
+			dir = SampleDirection(hitnormal, sampleCoord, 10);
 			diffuse *= max(0, dot(hitnormal, dir));// / PI;
 		}
 		else {
-			col = diffuse * _Sky.SampleLevel(_LinearClamp, dir, 0);
+			col = diffuse * SampleSky(dir);// _Sky.SampleLevel(_LinearClamp, dir, 0);
 			break;
 		}
 	}

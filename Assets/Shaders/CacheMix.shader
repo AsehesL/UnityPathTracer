@@ -40,12 +40,19 @@
             sampler2D _MainTex;
 			sampler2D _Cache;
 
+			float _Frame;
+
             fixed4 frag (v2f i) : SV_Target
             {
                 fixed4 col = tex2D(_MainTex, i.uv);
 				i.uv.y = 1.0 - i.uv.y;
-                fixed4 cache = tex2D(_Cache, i.uv);
-				col.rgb = lerp(cache.rgb, col.rgb, 0.1);
+                fixed4 cache = tex2D(_Cache, i.uv) * _Frame;
+				//col.rgb = lerp(cache.rgb, col.rgb, 0.01);
+				//fixed l = Luminance(col.rgb);
+				//col.rgb = lerp(cache.rgb, col.rgb, l);
+				col.rgb += cache.rgb;
+				col.rgb /= _Frame + 1.0;
+				col.a = 1.0;
                 return col;
             }
             ENDCG

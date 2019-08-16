@@ -10,7 +10,13 @@ public class PathTracingEffect : MonoBehaviour
 
 	public Shader shader;
 
-	private ComputeBuffer m_NodesBuffer;
+    public Light light;
+
+    public float lightIntensity = 1.0f;
+    public float skyHDR = 1.0f;
+
+
+    private ComputeBuffer m_NodesBuffer;
 	private ComputeBuffer m_TrianglesBuffer;
 
 	private RenderTexture m_RenderTexture;
@@ -28,14 +34,16 @@ public class PathTracingEffect : MonoBehaviour
 
 	private Material m_Material;
 
+    private float m_Frame;
+
 	void Start()
 	{
 		m_Material = new Material(shader);
 
 		m_Camera = gameObject.GetComponent<Camera>();
 
-		int width = (int) (((float) Screen.width) * 0.5f);
-		int height = (int) (((float) Screen.height) * 0.5f);
+		int width = (int) (((float) Screen.width) * 0.8f);
+		int height = (int) (((float) Screen.height) * 0.8f);
 
 		m_RenderTexture = new RenderTexture(width, height, 24);
 		m_RenderTexture.enableRandomWrite = true;
@@ -86,7 +94,8 @@ public class PathTracingEffect : MonoBehaviour
 		computeShader.SetInt("_TexHeight", texture.height);
 		//computeShader.SetInt("_SampleNum", 83);
 		computeShader.SetTexture(m_KernelIndex, "_Sky", sky);
-	}
+	    computeShader.SetFloat("_LightRange", 8);
+    }
 
 	void Update()
 	{
@@ -105,6 +114,11 @@ public class PathTracingEffect : MonoBehaviour
 		//int offset = Random.Range(0, 82);
 		//computeShader.SetInt("_SampleIndex", offset);
 		computeShader.SetFloat("_Time", Time.time);
+        computeShader.SetVector("_LightDir", -light.transform.forward);
+        computeShader.SetVector("_LightColor", light.color);
+        computeShader.SetFloat("_LightIntensity", lightIntensity);
+        computeShader.SetFloat("_SkyHDR", skyHDR);
+	    
 
 		computeShader.Dispatch(m_KernelIndex, m_DispatchX, m_DispatchY, 1);
 	}
@@ -129,18 +143,24 @@ public class PathTracingEffect : MonoBehaviour
 	{
 		if (m_RenderTexture)
 		{
-			//if (!m_TempRt)
+			if (!m_TempRt)
 			{
 				Graphics.Blit(m_RenderTexture, destination);
-			//	m_TempRt = RenderTexture.GetTemporary(source.width, source.height);
+				m_TempRt = RenderTexture.GetTemporary(source.width, source.height);
 			}
-			//else
-			//{
-			//	m_Material.SetTexture("_Cache", m_TempRt);
-			//	Graphics.Blit(m_RenderTexture, destination, m_Material);
-			//}
+			else
+			{
+                m_Material.SetFloat("_Frame", m_Frame);
+				m_Material.SetTexture("_Cache", m_TempRt);
+				Graphics.Blit(m_RenderTexture, destination, m_Material);
 
-			//Graphics.Blit(destination, m_TempRt);
+			    m_Frame += 1.0f;
+            }
+
+			Graphics.Blit(destination, m_TempRt);
+
+		    
+
 		}
 		else
 			Graphics.Blit(source, destination);
