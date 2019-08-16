@@ -1,6 +1,9 @@
 ﻿#pragma kernel CSMain
 
-struct LKDNode {
+#define MAX_DEPTH 3
+#define PI 3.14159265359f
+
+struct Node {
 	float3 min;
 	float3 max;
 	int leftChild;
@@ -18,7 +21,7 @@ struct Triangle {
 	float3 normal2;
 };
 
-StructuredBuffer<LKDNode> _Tree;
+StructuredBuffer<Node> _Tree;
 StructuredBuffer<Triangle> _Triangles;
 
 int _NodeCounts;
@@ -34,6 +37,12 @@ float _NearClipWidth;
 float _NearClipHeight;
 
 float4x4 _CameraToWorld;
+
+TextureCube<float4> _Sky;
+SamplerState _LinearClamp;
+
+int _SampleOffset;
+int _SampleNum;
 
 int RaycastTriangle(float3 dir, float3 orig, Triangle tg, inout float rt, inout float3 hitvertex, inout float3 hitnormal) {
 
@@ -128,7 +137,7 @@ int Raycast(float3 origin, float3 direction, inout float distance, inout float3 
 	if (_NodeCounts == 0)
 		return -1;
 
-	LKDNode stack[100];
+	Node stack[100];
 	stack[0] = _Tree[_RootNode];
 	int stackcount = 1;
 
@@ -138,7 +147,7 @@ int Raycast(float3 origin, float3 direction, inout float distance, inout float3 
 	int begin = -1;
 	int end = -1;
 
-	LKDNode node;
+	Node node;
 
 	while (stackcount > 0 && stackcount < 100) {
 		if (begin >= 0 && end >= 0 && i <= end) {
@@ -172,11 +181,62 @@ int Raycast(float3 origin, float3 direction, inout float distance, inout float3 
 	return hitindex;
 }
 
+float RadicalInverseVdC(uint bits) {
+	bits = (bits << 16u) | (bits >> 16u);
+	bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+	bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+	bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+	bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+	return float(bits) * 2.3283064365386963e-10;
+}
+
+float2 Hammersley2D(uint i, uint N) {
+	return float2(float(i) / float(N), RadicalInverseVdC(i));
+}
+
+float3 Hemisphere(float e, float2 sp) {
+	float cos_phi = cos(2.0 * PI * sp.x);
+	float sin_phi = sin(2.0 * PI * sp.x);
+	float cos_theta = pow(1.0 - sp.y, 1.0 / (e + 1.0));
+	float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+	float pu = sin_theta * cos_phi;
+	float pv = sin_theta * sin_phi;
+	float pw = cos_theta;
+
+	return float3(pu, pv, pw);
+}
+
+float3 SampleDirection(float3 dir, float2 sp, float e) {
+	float3 w = normalize(dir);
+	float3 u = normalize(cross(float3(0.00424, 1, 0.00764), w));
+	float3 v = cross(u, w);
+
+	float3 h = Hemisphere(e, sp);
+
+	return h.x * u + h.y * v + h.z * w;
+}
+
 [numthreads(4,4,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
-	float x = ((((float)id.x) / _TexWidth) * 2.0 - 1.0) * _NearClipWidth;
+	/*float x = ((((float)id.x) / _TexWidth) * 2.0 - 1.0) * _NearClipWidth;
 	float y = ((((float)id.y) / _TexHeight) * 2.0 - 1.0) * _NearClipHeight;
+
+	float3 pos = float3(x, y, _Near);
+
+	float3 origin = mul(_CameraToWorld, float4(pos.xyz, 1.0)).xyz;
+	float3 dir = normalize(mul((float3x3)_CameraToWorld, pos));
+
+	float distance = 9999999;
+	float3 hitnormal = 0, hitvertex = 0;*/
+
+	int spindex = (int)(frac(((float)(id.y * _TexWidth + id.x)) / _SampleNum) * _SampleNum) + _SampleOffset;
+	//int spindex = (int)(frac((id.y * _TexWidth + id.x) / _SampleNum) * _SampleNum) + _SampleOffset;
+	//int spnum = _TexWidth * _TexHeight;
+	
+	float2 sampleCoord = Hammersley2D(spindex, _SampleNum);
+	float x = ((((float)id.x) / _TexWidth + 1.0 / _TexWidth * sampleCoord.x) * 2.0 - 1.0) * _NearClipWidth;
+	float y = ((((float)id.y) / _TexHeight + 1.0 / _TexHeight * sampleCoord.y) * 2.0 - 1.0) * _NearClipHeight;
 
 	float3 pos = float3(x, y, _Near);
 
@@ -186,13 +246,43 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	float distance = 9999999;
 	float3 hitnormal = 0, hitvertex = 0;
 
-	int raycastindex = Raycast(origin, dir, distance, hitvertex, hitnormal);
+	float diffuse = 1;
+	float4 col = float4(0,0,0,1);
 
-	if (raycastindex >= 0) {
-		float ndv = max(0, dot(hitnormal, -dir));
-		_Result[id.xy] = float4(ndv, ndv, ndv, 1.0);
+	for (int i = 0; i < MAX_DEPTH; i++) {
+		int raycastindex = Raycast(origin, dir, distance, hitvertex, hitnormal);
+
+		if (raycastindex >= 0) {
+			origin = hitvertex;
+			dir = reflect(dir, hitnormal);
+			//dir = SampleDirection(hitnormal, sampleCoord, 0);
+			diffuse *= max(0, dot(hitnormal, dir));// / PI;
+		}
+		else {
+			col = diffuse * _Sky.SampleLevel(_LinearClamp, dir, 0);
+			break;
+		}
 	}
-	else {
-		_Result[id.xy] = float4(0,0,1, 1);
-	}
+
+	_Result[id.xy] = col;
+
+	//int raycastindex = Raycast(origin, dir, distance, hitvertex, hitnormal);
+
+	//if (raycastindex >= 0) {
+	//	float ndv = max(0, dot(hitnormal, -dir));
+	//	origin = hitvertex;
+	//	dir = reflect(dir, hitnormal);
+	//	distance = 9999999;
+	//	//_Result[id.xy] = _Sky.SampleLevel(_LinearClamp, reflect(dir, hitnormal), 0);
+	//	raycastindex = Raycast(origin, dir, distance, hitvertex, hitnormal);
+	//	if (raycastindex >= 0) {
+	//		_Result[id.xy] = _Sky.SampleLevel(_LinearClamp, reflect(dir, hitnormal), 0) * max(0, dot(hitnormal, -dir)) * ndv;
+	//	}
+	//	else {
+	//		_Result[id.xy] = _Sky.SampleLevel(_LinearClamp, dir, 0) * ndv;
+	//	}
+	//}
+	//else {
+	//	_Result[id.xy] = _Sky.SampleLevel(_LinearClamp, dir, 0);
+	//}
 }
