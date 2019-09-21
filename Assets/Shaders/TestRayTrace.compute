@@ -1,0 +1,238 @@
+﻿#pragma kernel CSMain
+
+#define MAX_DEPTH 1
+#define PI 3.14159265359f
+
+struct Node {
+	float3 min;
+	float3 max;
+	int leftChild;
+	int rightChild;
+	int dataIndex;
+};
+
+struct Triangle {
+	float3 vertex0;
+	float3 vertex1;
+	float3 vertex2;
+	float3 normal0;
+	float3 normal1;
+	float3 normal2;
+};
+
+StructuredBuffer<Node> _Tree;
+StructuredBuffer<Triangle> _Triangles;
+
+int _NodeCounts;
+int _RootNode;
+
+int _TexWidth;
+int _TexHeight;
+
+float _Near;
+float _NearClipWidth;
+float _NearClipHeight;
+
+float4x4 _CameraToWorld;
+
+RWTexture2D<float4> _Result;
+
+TextureCube<float4> _Sky;
+SamplerState _LinearClamp;
+
+float4 _LightDir;
+float4 _LightColor;
+float _LightIntensity;
+float _LightRange;
+float _SkyHDR;
+
+int RaycastTriangle(float3 dir, float3 orig, Triangle tg, inout float rt, inout float3 hitvertex, inout float3 hitnormal) {
+
+	float3 o = orig + normalize(dir) * 0.0000001;
+
+	float3 e1 = tg.vertex1 - tg.vertex0;
+	float3 e2 = tg.vertex2 - tg.vertex0;
+
+	float2 uv = 0;
+
+	float3 n = cross(e1, e2);
+	float ndv = dot(dir, n);
+
+	float3 p = cross(dir, e2);
+
+	float det = dot(e1, p);
+	float3 t = float3(0, 0, 0);
+	if (det > 0.0)
+	{
+		t = o - tg.vertex0;
+	}
+	else
+	{
+		t = tg.vertex0 - o;
+		det = -det;
+	}
+	if (det < 0.0000001f)
+	{
+		return -1;
+	}
+
+	uv.x = dot(t, p);
+	if (uv.x < 0.0f || uv.x > det)
+		return -1;
+
+	float3 q = cross(t, e1);
+
+	uv.y = dot(dir, q);
+	if (uv.y < 0.0f || uv.x + uv.y > det)
+		return -1;
+
+	float myt = dot(e2, q);
+
+	float finvdet = 1.0f / det;
+	myt *= finvdet;
+	if (myt < 0.001f)
+		return -1;
+	if (myt > rt)
+		return -1;
+	rt = myt;
+	uv.x *= finvdet;
+	uv.y *= finvdet;
+
+	hitvertex = o + dir * rt;
+	hitnormal = (1.0 - uv.x - uv.y) * tg.normal0 + uv.x * tg.normal1 + uv.y * tg.normal2;
+
+	return 1;
+}
+
+int RaycastBounds(float3 bmin, float3 bmax, float3 origin, float3 direction, out float hitdistance) {
+
+	float tmin = -999999999;
+	float tmax = 999999999;
+	float t1, t2;
+
+	if (direction.x != 0.0) {
+		t1 = (bmin.x - origin.x) / direction.x;
+		t2 = (bmax.x - origin.x) / direction.x;
+		tmin = max(tmin, min(t1, t2));
+		tmax = min(tmax, max(t1, t2));
+	}
+	if (direction.y != 0.0) {
+		t1 = (bmin.y - origin.y) / direction.y;
+		t2 = (bmax.y - origin.y) / direction.y;
+		tmin = max(tmin, min(t1, t2));
+		tmax = min(tmax, max(t1, t2));
+	}
+	if (direction.z != 0.0) {
+		t1 = (bmin.z - origin.z) / direction.z;
+		t2 = (bmax.z - origin.z) / direction.z;
+		tmin = max(tmin, min(t1, t2));
+		tmax = min(tmax, max(t1, t2));
+	}
+	if (tmax >= tmin) {
+		hitdistance = tmin;
+		return 1;
+	}
+	hitdistance = 0;
+	return -1;
+}
+
+int Raycast(float3 origin, float3 direction, inout float distance, inout float3 hitvertex, inout float3 hitnormal) {
+	if (_NodeCounts == 0)
+		return -1;
+	Node stack[100];
+	Node node, leftnode, rightnode;
+	node = _Tree[_RootNode];
+	//stack[0] = _Tree[_RootNode];
+	int stackcount = 0;
+
+	int hitindex = -1;
+	float leftdis, rightdis;
+	int ishitleft = RaycastBounds(node.min, node.max, origin, direction, leftdis);
+	int ishitright = -1;
+	if (ishitleft > 0) {
+		stack[0] = node;
+		stackcount = 1;
+	}
+
+	while (stackcount > 0 && stackcount < 100) {
+		node = stack[stackcount - 1];
+
+		stackcount -= 1;
+
+		if (node.dataIndex < 0) {
+			leftnode = _Tree[node.leftChild];
+			rightnode = _Tree[node.rightChild];
+			ishitleft = RaycastBounds(leftnode.min, leftnode.max, origin, direction, leftdis);
+			ishitright = RaycastBounds(rightnode.min, rightnode.max, origin, direction, rightdis);
+			if (ishitleft > 0 && ishitright > 0) {
+				if (leftdis < rightdis) {
+					stack[stackcount] = _Tree[node.rightChild];
+					stack[stackcount + 1] = _Tree[node.leftChild];
+					stackcount += 2;
+				}
+				else {
+					stack[stackcount] = _Tree[node.leftChild];
+					stack[stackcount + 1] = _Tree[node.rightChild];
+					stackcount += 2;
+				}
+			}
+			else if (ishitleft > 0) {
+				stack[stackcount] = _Tree[node.leftChild];
+				stackcount += 1;
+			}
+			else if (ishitright > 0) {
+				stack[stackcount] = _Tree[node.rightChild];
+				stackcount += 1;
+			}
+		}
+		else {
+			if (RaycastTriangle(direction, origin, _Triangles[node.dataIndex], distance, hitvertex, hitnormal) >= 0) {
+				hitindex = node.dataIndex;
+			}
+		}
+	}
+	return hitindex;
+}
+
+float4 SampleSky(float3 dir) {
+	float4 skycol = _Sky.SampleLevel(_LinearClamp, dir, 0) * _SkyHDR;
+	float4 light = pow(max(0, dot(dir, _LightDir.xyz)), _LightRange) * _LightIntensity * _LightColor;
+	return skycol + light;
+}
+
+[numthreads(4,4,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	float x = ((((float)id.x) / _TexWidth) * 2.0 - 1.0) * _NearClipWidth;
+	float y = ((((float)id.y) / _TexHeight) * 2.0 - 1.0) * _NearClipHeight;
+
+	float3 pos = float3(x, y, _Near);
+
+	float3 origin = mul(_CameraToWorld, float4(pos.xyz, 1.0)).xyz;
+	float3 dir = normalize(mul((float3x3)_CameraToWorld, pos));
+
+	int raycastindex;
+
+	float distance = 9999999;
+	float3 hitnormal = 0, hitvertex = 0; 
+
+	float diffuse = 1;
+	float4 col = float4(0, 0, 0, 1);
+
+	[unroll]
+	for (int i = 0; i < MAX_DEPTH; i++) {
+		raycastindex = Raycast(origin, dir, distance, hitvertex, hitnormal);
+
+		if (raycastindex >= 0) {
+			origin = hitvertex;
+			dir = reflect(dir, hitnormal);
+			diffuse *= max(0, dot(hitnormal, dir));
+		}
+		else {
+			col = diffuse * SampleSky(dir);
+			break;
+		}
+	}
+
+	_Result[id.xy] = col;
+}

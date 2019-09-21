@@ -3,232 +3,178 @@ using System.Collections.Generic;
 
 public static class LBVH
 {
-	private enum AxisType
-	{
-		X,
-		Y,
-		Z,
-	}
 
-	public static int BuildBVH(List<Triangle> triangles, int depth, int maxDepth, ref List<Node> tree,
+	public static int BuildBVH(List<Triangle> triangles, Bounds bounds, ref List<Node> tree,
 		ref List<Triangle> datas)
 	{
-		if (tree == null)
-			tree = new List<Node>();
-		if (datas == null)
-			datas = new List<Triangle>();
-
-		if (triangles == null || triangles.Count == 0)
-			return -1;
-		if (depth >= maxDepth)
+		tree = new List<Node>();
+		List<uint> sortedMortons = new List<uint>();
+		for (int i = 0; i < triangles.Count; i++)
 		{
-			int dtbegin = datas.Count;
-			int dtend = datas.Count + triangles.Count - 1;
-			datas.AddRange(triangles);
-			tree.Add(CreateLeaf(triangles, dtbegin, dtend));
+			Vector3 center =
+				0.5f * (Vector3.Min(Vector3.Min(triangles[i].vertex0, triangles[i].vertex1), triangles[i].vertex2) +
+				        Vector3.Max(Vector3.Max(triangles[i].vertex0, triangles[i].vertex1), triangles[i].vertex2));
+			float x = (center.x - bounds.min.x) / bounds.size.x;
+			float y = (center.y - bounds.min.y) / bounds.size.y;
+			float z = (center.z - bounds.min.z) / bounds.size.z;
+			uint morton = Morton3D(x, y, z);
+			sortedMortons.Add(morton);
+		}
+		Sort(triangles, sortedMortons);
+
+		datas = triangles;
+		return GenerateHierarchy(triangles, sortedMortons, 0, sortedMortons.Count - 1, ref tree);
+	}
+
+	private static int GenerateHierarchy(List<Triangle> sortedTriangles, List<uint> sortedMortons, int first, int last, ref List<Node> tree)
+	{
+		if (first == last)
+		{
+			Node node = new Node
+			{
+				min = Vector3.Min(Vector3.Min(sortedTriangles[first].vertex0, sortedTriangles[first].vertex1),
+					sortedTriangles[first].vertex2),
+				max = Vector3.Max(Vector3.Max(sortedTriangles[first].vertex0, sortedTriangles[first].vertex1),
+					sortedTriangles[first].vertex2),
+				leftChild = -1,
+				rightChild = -1,
+				dataIndex = first,
+			};
+			tree.Add(node);
 			return tree.Count - 1;
 		}
 
-		AxisType atype = GetSplitAxis(triangles);
+		int split = FindSplit(sortedMortons, first, last);
 
-		float coord = GetSplitCoord(triangles, atype);
+		int child1 = GenerateHierarchy(sortedTriangles, sortedMortons, first, split, ref tree);
+		int child2 = GenerateHierarchy(sortedTriangles, sortedMortons, split + 1, last, ref tree);
 
-		List<Triangle> negative = new List<Triangle>();
-		List<Triangle> positive = new List<Triangle>();
+		Node child1Node = tree[child1];
+		Node child2Node = tree[child2];
 
-		for (int i = 0; i < triangles.Count; i++)
+		Node child = new Node
 		{
-			SplitTriangle(triangles[i], negative, positive, atype, coord);
-		}
+			min = Vector3.Min(child1Node.min, child2Node.min),
+			max = Vector3.Max(child1Node.max, child2Node.max),
+			leftChild = child1,
+			rightChild = child2,
+			dataIndex = -1,
+		};
 
-		int negativenode = BuildBVH(negative, depth + 1, maxDepth, ref tree, ref datas);
-		int positivenode = BuildBVH(negative, depth + 1, maxDepth, ref tree, ref datas);
-
-		if ((negativenode < 0 || negativenode >= tree.Count) && (positivenode < 0 || positivenode >= tree.Count))
-			return -1;
-
-
-		tree.Add(CreateNode(negativenode, negativenode, tree));
+		tree.Add(child);
 		return tree.Count - 1;
 	}
 
-	private static void SplitTriangle(Triangle triangle, List<Triangle> negative, List<Triangle> positive, AxisType axis,
-		float coord)
+	private static int FindSplit(List<uint> sortedMortons, int first, int last)
 	{
-		float maxnvalue = 0.0f;
-		float maxpvalue = 0.0f;
+		uint firstCode = sortedMortons[first];
+		uint lastCode = sortedMortons[last];
 
-		float value0 = 0.0f, value1 = 0.0f, value2 = 0.0f;
-		if (axis == AxisType.X)
-		{
-			value0 = triangle.vertex0.x;
-			value1 = triangle.vertex1.x;
-			value2 = triangle.vertex2.x;
-		}
-		else if (axis == AxisType.Y)
-		{
-			value0 = triangle.vertex0.y;
-			value1 = triangle.vertex1.y;
-			value2 = triangle.vertex2.y;
-		}
-		else if (axis == AxisType.Z)
-		{
-			value0 = triangle.vertex0.z;
-			value1 = triangle.vertex1.z;
-			value2 = triangle.vertex2.z;
-		}
+		if (firstCode == lastCode)
+			return (first + last) >> 1;
 
-		if (value0 <= coord)
-			maxnvalue = Mathf.Max(maxnvalue, coord - value0);
-		else
-			maxpvalue = Mathf.Max(maxpvalue, value0 - coord);
-		if (value1 <= coord)
-			maxnvalue = Mathf.Max(maxnvalue, coord - value1);
-		else
-			maxpvalue = Mathf.Max(maxpvalue, value1 - coord);
-		if (value2 <= coord)
-			maxnvalue = Mathf.Max(maxnvalue, coord - value2);
-		else
-			maxpvalue = Mathf.Max(maxpvalue, value2 - coord);
-		if (maxnvalue < maxpvalue)
-			positive.Add(triangle);
-		else
-			negative.Add(triangle);
+		int commonPrefix = CountLeadingZeros(firstCode ^ lastCode);
+
+		int split = first;
+		int step = last - first;
+
+		do
+		{
+			step = (step + 1) >> 1;
+			int newSplit = split + step;
+
+			if (newSplit < last)
+			{
+				uint splitCode = sortedMortons[newSplit];
+				int splitPrefix = CountLeadingZeros(firstCode ^ splitCode);
+				if (splitPrefix > commonPrefix)
+					split = newSplit;
+			}
+		}
+		while (step > 1);
+
+		return split;
 	}
 
-	private static AxisType GetSplitAxis(List<Triangle> triangles)
+	private static int CountLeadingZeros(uint i)
 	{
-		Vector3 min = Vector3.one * Mathf.Infinity;
-		Vector3 max = -Vector3.one * Mathf.Infinity;
-		for (int i = 0; i < triangles.Count; i++)
-		{
-			min = Vector3.Min(triangles[i].vertex0, min);
-			min = Vector3.Min(triangles[i].vertex1, min);
-			min = Vector3.Min(triangles[i].vertex2, min);
-			max = Vector3.Max(triangles[i].vertex0, max);
-			max = Vector3.Max(triangles[i].vertex1, max);
-			max = Vector3.Max(triangles[i].vertex2, max);
-		}
+		int ret = 0;
+		uint temp = ~i;
 
-		Vector3 size = max - min;
-		if (size.y >= size.x && size.y >= size.z)
-			return AxisType.Y;
-		else if (size.z >= size.x && size.z >= size.y)
-			return AxisType.Z;
-		else
-			return AxisType.X;
+		while ((temp & 0x80000000) > 0)
+		{
+			temp <<= 1;
+			ret++;
+		}
+		return ret;
 	}
 
-	private static float GetSplitCoord(List<Triangle> triangles, AxisType axisType)
+	private static void Sort(List<Triangle> sortedDatas, List<uint> sortedMortons)
 	{
-		float min = 0, max = 0;
-		for (int i = 0; i < triangles.Count; i++)
-		{
-			float cmin = 0;
-			float cmax = 0;
-			if (axisType == AxisType.X)
-				cmin = Mathf.Min(triangles[i].vertex0.x, triangles[i].vertex1.x, triangles[i].vertex2.x);
-			else if (axisType == AxisType.Y)
-				cmin = Mathf.Min(triangles[i].vertex0.y, triangles[i].vertex1.y, triangles[i].vertex2.y);
-			else if (axisType == AxisType.Z)
-				cmin = Mathf.Min(triangles[i].vertex0.z, triangles[i].vertex1.z, triangles[i].vertex2.z);
-
-			if (axisType == AxisType.X)
-				cmax = Mathf.Max(triangles[i].vertex0.x, triangles[i].vertex1.x, triangles[i].vertex2.x);
-			else if (axisType == AxisType.Y)
-				cmax = Mathf.Max(triangles[i].vertex0.y, triangles[i].vertex1.y, triangles[i].vertex2.y);
-			else if (axisType == AxisType.Z)
-				cmax = Mathf.Max(triangles[i].vertex0.z, triangles[i].vertex1.z, triangles[i].vertex2.z);
-
-			min += cmin;
-			max += cmax;
-		}
-
-		min /= triangles.Count;
-		max /= triangles.Count;
-		return (min + max) * 0.5f;
+		QuickSort(sortedDatas, sortedMortons, 0, sortedMortons.Count - 1);
 	}
 
-	private static Node CreateLeaf(List<Triangle> triangles, int dataBegin, int dataEnd)
+	private static void QuickSort(List<Triangle> sortedDatas, List<uint> sortedMortons, int low, int high)
 	{
-		Vector3 min = Vector3.one * float.MaxValue;
-		Vector3 max = -Vector3.one * float.MaxValue;
-
-		for (int i = 0; i < triangles.Count; i++)
+		int pivot;
+		if (low < high)
 		{
-			min = Vector3.Min(min, triangles[i].vertex0);
-			min = Vector3.Min(min, triangles[i].vertex1);
-			min = Vector3.Min(min, triangles[i].vertex2);
-			max = Vector3.Max(max, triangles[i].vertex0);
-			max = Vector3.Max(max, triangles[i].vertex1);
-			max = Vector3.Max(max, triangles[i].vertex2);
+			pivot = Partition(sortedDatas, sortedMortons, low, high);
+
+			QuickSort(sortedDatas, sortedMortons, low, pivot - 1);
+			QuickSort(sortedDatas, sortedMortons, pivot + 1, high);
 		}
-
-		Vector3 si = max - min;
-		Vector3 ct = (min + max) * 0.5f;
-
-		if (si.x <= 0)
-			si.x = 0.1f;
-		if (si.y <= 0)
-			si.y = 0.1f;
-		if (si.z <= 0)
-			si.z = 0.1f;
-
-		min = ct - si * 0.5f;
-		max = ct + si * 0.5f;
-
-		return new Node
-		{
-			min = min,
-			max = max,
-			leftChild = -1,
-			rightChild = -1,
-			dataBegin = dataBegin,
-			dataEnd = dataEnd,
-		};
 	}
 
-	private static Node CreateNode(int left, int right, List<Node> nodes)
+	private static int Partition(List<Triangle> sortedDatas, List<uint> sortedMortons, int low, int high)
 	{
-		Vector3 min = Vector3.one * float.MaxValue;
-		Vector3 max = Vector3.one * -float.MaxValue;
-
-		if (left >= 0 && left < nodes.Count)
+		uint pivotkey = sortedMortons[low];
+		while (low < high)
 		{
-			Node leftnode = nodes[left];
-			min = Vector3.Min(min, leftnode.min);
-			max = Vector3.Max(max, leftnode.max);
+			while (low < high && sortedMortons[high] >= pivotkey)
+				high--;
+			Swap(sortedDatas, sortedMortons, low, high);
+			while (low < high && sortedMortons[low] <= pivotkey)
+				low++;
+			Swap(sortedDatas, sortedMortons, low, high);
 		}
+		return low;
+	}
 
-		if (right >= 0 && right < nodes.Count)
-		{
-			Node rightnode = nodes[right];
-			min = Vector3.Min(min, rightnode.min);
-			max = Vector3.Max(max, rightnode.max);
-		}
+	private static void Swap(List<Triangle> sortedDatas, List<uint> sortedMortons, int a, int b)
+	{
+		var tempData = sortedDatas[a];
+		uint tempMorton = sortedMortons[a];
+		sortedDatas[a] = sortedDatas[b];
+		sortedDatas[b] = tempData;
+		sortedMortons[a] = sortedMortons[b];
+		sortedMortons[b] = tempMorton;
+	}
 
-		Vector3 si = max - min;
-		Vector3 ct = (min + max) * 0.5f;
+	private static uint ExpandBits(uint v)
+	{
+		v = (v * 0x00010001u) & 0xFF0000FFu;
+		v = (v * 0x00000101u) & 0x0F00F00Fu;
+		v = (v * 0x00000011u) & 0xC30C30C3u;
+		v = (v * 0x00000005u) & 0x49249249u;
+		return v;
+	}
 
-		if (si.x <= 0)
-			si.x = 0.1f;
-		if (si.y <= 0)
-			si.y = 0.1f;
-		if (si.z <= 0)
-			si.z = 0.1f;
-
-		min = ct - si * 0.5f;
-		max = ct + si * 0.5f;
-
-
-		return new Node
-		{
-			min = min,
-			max = max,
-			dataBegin = -1,
-			dataEnd = -1,
-			leftChild = left,
-			rightChild = right,
-		};
+	/// <summary>
+	/// 计算莫顿码
+	/// </summary>
+	/// <param name="x"></param>
+	/// <param name="y"></param>
+	/// <param name="z"></param>
+	/// <returns></returns>
+	private static uint Morton3D(float x, float y, float z)
+	{
+		x = Mathf.Min(Mathf.Max(x * 1024.0f, 0.0f), 1023.0f);
+		y = Mathf.Min(Mathf.Max(y * 1024.0f, 0.0f), 1023.0f);
+		z = Mathf.Min(Mathf.Max(z * 1024.0f, 0.0f), 1023.0f);
+		uint xx = ExpandBits((uint)x);
+		uint yy = ExpandBits((uint)y);
+		uint zz = ExpandBits((uint)z);
+		return xx * 4 + yy * 2 + zz;
 	}
 }
