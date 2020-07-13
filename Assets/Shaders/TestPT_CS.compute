@@ -1,0 +1,129 @@
+﻿#pragma kernel CSMain
+
+#define MAX_DEPTH 1
+#define PI 3.14159265359f
+
+struct Triangle {
+	float3 vertex0;
+	float3 vertex1;
+	float3 vertex2;
+	float3 normal0;
+	float3 normal1;
+	float3 normal2;
+};
+
+StructuredBuffer<Triangle> _Triangles;
+
+int _TriangleCount;
+
+int _TexWidth;
+int _TexHeight;
+
+float _Near;
+float _NearClipWidth;
+float _NearClipHeight;
+
+float4x4 _CameraToWorld;
+
+RWTexture2D<float4> _Result;
+
+TextureCube<float4> _Sky;
+SamplerState _LinearClamp;
+
+int RaycastTriangle(float3 dir, float3 orig, Triangle tg, inout float rt, inout float3 hitvertex, inout float3 hitnormal) {
+
+	float3 o = orig + normalize(dir) * 0.0000001;
+
+	float3 e1 = tg.vertex1 - tg.vertex0;
+	float3 e2 = tg.vertex2 - tg.vertex0;
+
+	float2 uv = 0;
+
+	float3 n = cross(e1, e2);
+	float ndv = dot(dir, n);
+
+	float3 p = cross(dir, e2);
+
+	float det = dot(e1, p);
+	float3 t = float3(0, 0, 0);
+	if (det > 0.0)
+	{
+		t = o - tg.vertex0;
+	}
+	else
+	{
+		t = tg.vertex0 - o;
+		det = -det;
+	}
+	if (det < 0.0000001f)
+	{
+		return -1;
+	}
+
+	uv.x = dot(t, p);
+	if (uv.x < 0.0f || uv.x > det)
+		return -1;
+
+	float3 q = cross(t, e1);
+
+	uv.y = dot(dir, q);
+	if (uv.y < 0.0f || uv.x + uv.y > det)
+		return -1;
+
+	float myt = dot(e2, q);
+
+	float finvdet = 1.0f / det;
+	myt *= finvdet;
+	if (myt < 0.001f)
+		return -1;
+	if (myt > rt)
+		return -1;
+	rt = myt;
+	uv.x *= finvdet;
+	uv.y *= finvdet;
+
+	hitvertex = o + dir * rt;
+	hitnormal = (1.0 - uv.x - uv.y) * tg.normal0 + uv.x * tg.normal1 + uv.y * tg.normal2;
+
+	return 1;
+}
+
+[numthreads(4,4,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	float x = ((((float)id.x) / _TexWidth) * 2.0 - 1.0) * _NearClipWidth;
+	float y = ((((float)id.y) / _TexHeight) * 2.0 - 1.0) * _NearClipHeight;
+
+	float3 pos = float3(x, y, _Near);
+
+	float3 origin = mul(_CameraToWorld, float4(pos.xyz, 1.0)).xyz;
+	float3 dir = normalize(mul((float3x3)_CameraToWorld, pos));
+
+	int raycastindex;
+
+	
+	float3 hitnormal = 0, hitvertex = 0; 
+
+	float diffuse = 1;
+	float4 col = float4(0, 0, 0, 1);
+
+	//[unroll]
+	for (int i = 0; i < 10; i++) {
+	    float distance = 9999999;
+		raycastindex = RaycastTriangle(origin, dir, _Triangles[i], distance, hitvertex, hitnormal);
+
+		if (raycastindex >= 0) {
+			//origin = hitvertex;
+			//dir = reflect(dir, hitnormal);
+			//diffuse *= max(0, dot(hitnormal, dir));
+			_Result[id.xy] = float4(1,0,0,1);
+		}
+		else {
+			//col = diffuse * SampleSky(dir);
+			//break;
+			_Result[id.xy] = float4(0,0,1,1);
+		}
+	}
+
+	//_Result[id.xy] = col;
+}

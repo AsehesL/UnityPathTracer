@@ -1,6 +1,6 @@
 ﻿#pragma kernel CSMain
 
-#define MAX_DEPTH 1
+#define MAX_DEPTH 3
 #define PI 3.14159265359f
 
 struct Node {
@@ -33,6 +33,8 @@ float _Near;
 float _NearClipWidth;
 float _NearClipHeight;
 
+float _Time;
+
 float4x4 _CameraToWorld;
 
 RWTexture2D<float4> _Result;
@@ -45,6 +47,14 @@ float4 _LightColor;
 float _LightIntensity;
 float _LightRange;
 float _SkyHDR;
+
+float _Seed = 0.;
+float Rand() { return frac(sin(_Seed++)*43758.5453123); }
+
+float3 Jitter(float3 d, float phi, float sina, float cosa) {
+    float3 w = normalize(d), u = normalize(cross(w.yzx, w)), v = cross(w, u);
+    return (u*cos(phi) + v*sin(phi)) * sina + w * cosa;
+}
 
 int RaycastTriangle(float3 dir, float3 orig, Triangle tg, inout float rt, inout float3 hitvertex, inout float3 hitnormal) {
 
@@ -200,9 +210,11 @@ float4 SampleSky(float3 dir) {
 	return skycol + light;
 }
 
-[numthreads(4,4,1)]
+[numthreads(2,2,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
+    _Seed = _Time + (float)(_TexHeight * id.x) / _TexWidth + ((float)id.y) / _TexHeight;
+
 	float x = ((((float)id.x) / _TexWidth) * 2.0 - 1.0) * _NearClipWidth;
 	float y = ((((float)id.y) / _TexHeight) * 2.0 - 1.0) * _NearClipHeight;
 
@@ -225,8 +237,12 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 
 		if (raycastindex >= 0) {
 			origin = hitvertex;
-			dir = reflect(dir, hitnormal);
-			diffuse *= max(0, dot(hitnormal, dir));
+			
+			float r2 = Rand();
+            float3 d = Jitter(hitnormal, 2.*PI*Rand(), sqrt(r2), sqrt(1.0 - r2));
+			
+			dir = reflect(dir, d);
+			diffuse *= max(0, dot(d, dir));
 		}
 		else {
 			col = diffuse * SampleSky(dir);

@@ -34,14 +34,14 @@ public class CameraController : MonoBehaviour {
     {
         if (Mathf.Abs(axis) > 0.01f)
         {
-            transform.Translate(Vector3.forward * Time.deltaTime * axis * SpeedRotate);
+            transform.Translate(Vector3.forward * Time.deltaTime * axis * SpeedScalling);
         }
     }
 
     private void CameraRotate()
     {
         Vector3 rotation = transform.rotation.eulerAngles;
-        rotation += new Vector3(-Input.GetAxis("Mouse Y"), Input.GetAxis("Mouse X"), 0) * Time.deltaTime * SpeedScalling;
+        rotation += new Vector3(-Input.GetAxis("Mouse Y"), Input.GetAxis("Mouse X"), 0) * Time.deltaTime * SpeedRotate;
         transform.rotation = Quaternion.Euler(rotation);
     }
 }

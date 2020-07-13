@@ -30,11 +30,13 @@ public class PathTracingEffect : MonoBehaviour
 
 	//private int m_SampleIndex = 0;
 
-	//private RenderTexture m_TempRt;
+	private RenderTexture m_TempRt;
 
 	private Material m_Material;
 
     private float m_Frame;
+
+    private bool m_MouseDown;
 
 	void Start()
 	{
@@ -42,15 +44,15 @@ public class PathTracingEffect : MonoBehaviour
 
 		m_Camera = gameObject.GetComponent<Camera>();
 
-		int width = (int) (((float) Screen.width) * 0.3f);
-		int height = (int) (((float) Screen.height) * 0.3f);
+		int width = (int) (((float) Screen.width));
+		int height = (int) (((float) Screen.height));
 
 		m_RenderTexture = new RenderTexture(width, height, 24);
 		m_RenderTexture.enableRandomWrite = true;
 		m_RenderTexture.Create();
 
-		m_DispatchX = Mathf.CeilToInt((float)m_RenderTexture.width / 4);
-		m_DispatchY = Mathf.CeilToInt((float)m_RenderTexture.height / 4);
+		m_DispatchX = Mathf.CeilToInt((float)m_RenderTexture.width / 2);
+		m_DispatchY = Mathf.CeilToInt((float)m_RenderTexture.height / 2);
 
 
 		List<Node> tree;
@@ -115,7 +117,7 @@ public class PathTracingEffect : MonoBehaviour
 
 		//int offset = Random.Range(0, 82);
 		//computeShader.SetInt("_SampleIndex", offset);
-		//computeShader.SetFloat("_Time", Time.time);
+		computeShader.SetFloat("_Time", Time.time);
         computeShader.SetVector("_LightDir", -light.transform.forward);
         computeShader.SetVector("_LightColor", light.color);
         computeShader.SetFloat("_LightIntensity", lightIntensity);
@@ -123,6 +125,13 @@ public class PathTracingEffect : MonoBehaviour
 	    
 
 		computeShader.Dispatch(m_KernelIndex, m_DispatchX, m_DispatchY, 1);
+
+		if (Input.GetMouseButton(0) || Input.GetMouseButton(1) || Input.GetMouseButton(2) || Mathf.Abs(Input.GetAxis("Mouse ScrollWheel")) > 0.01f)
+			m_MouseDown = true;
+		else
+		{
+			m_MouseDown = false;
+		}
 	}
 	
 	void OnDestroy()
@@ -133,8 +142,8 @@ public class PathTracingEffect : MonoBehaviour
 			m_NodesBuffer.Release();
 		if (m_RenderTexture)
 			Destroy(m_RenderTexture);
-		//if (m_TempRt)
-		//	RenderTexture.ReleaseTemporary(m_TempRt);
+		if (m_TempRt)
+			RenderTexture.ReleaseTemporary(m_TempRt);
 		m_TrianglesBuffer = null;
 		m_NodesBuffer = null;
 		m_RenderTexture = null;
@@ -145,22 +154,31 @@ public class PathTracingEffect : MonoBehaviour
 	{
 		if (m_RenderTexture)
 		{
-			//if (!m_TempRt)
-			//{
-			//	Graphics.Blit(m_RenderTexture, destination);
-			//	m_TempRt = RenderTexture.GetTemporary(source.width, source.height);
-			//}
-			//else
-			//{
-   //             m_Material.SetFloat("_Frame", m_Frame);
-			//	m_Material.SetTexture("_Cache", m_TempRt);
-			//	Graphics.Blit(m_RenderTexture, destination, m_Material);
+			if (!m_TempRt)
+			{
+				Graphics.Blit(m_RenderTexture, destination);
+				m_TempRt = RenderTexture.GetTemporary(m_RenderTexture.width, m_RenderTexture.height);
+			}
+			else
+			{
+				if (m_MouseDown)
+				{
+					Graphics.Blit(m_RenderTexture, destination);
+					m_Frame = 0.0f;
+				}
+				else
+				{
 
-			//    m_Frame += 1.0f;
-   //         }
+					m_Material.SetFloat("_Frame", m_Frame);
+					m_Material.SetTexture("_Cache", m_TempRt);
+					Graphics.Blit(m_RenderTexture, destination, m_Material);
 
-			//Graphics.Blit(destination, m_TempRt);
-			Graphics.Blit(m_RenderTexture, destination);
+					m_Frame += 1.0f;
+				}
+			}
+
+			Graphics.Blit(destination, m_TempRt);
+			//Graphics.Blit(m_RenderTexture, destination);
 
 
 		}
