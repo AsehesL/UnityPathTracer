@@ -1,6 +1,6 @@
 ﻿#pragma kernel CSMain
 
-#define MAX_DEPTH 3
+#define MAX_DEPTH 6
 #define PI 3.14159265359f
 
 struct Node {
@@ -23,6 +23,7 @@ struct Triangle {
 
 struct Material {
     float3 albedo;
+    float3 emissive;
     float roughness;
 };
 
@@ -225,8 +226,9 @@ int Raycast(Ray ray, inout RaycastHit hit) {
 	return hitindex;
 }
 
-float4 SampleSky(float3 dir) {
-	return _Sky.SampleLevel(_LinearClamp, dir, 0);
+float3 SampleSky(float3 dir) {
+	return _Sky.SampleLevel(_LinearClamp, dir, 0).rgb;
+	//return float3(0,0,1);
 }
 
 [numthreads(2,2,1)]
@@ -250,10 +252,13 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	hit.hitnormal = 0;
 	hit.matid = 0;
 	
-	float diffuse = 1;
-	float4 col = float4(0, 0, 0, 1);
+	//float diffuse = 1;
+	//float4 col = float4(1, 1, 1, 1);
+	
+	float3 acc = float3(0,0,0);
+    float3 mask = float3(1,1,1);
 
-    int raycastindex;
+    int raycastindex = 0;
 
 	[unroll]
 	for (int i = 0; i < MAX_DEPTH; i++) {
@@ -269,13 +274,17 @@ void CSMain (uint3 id : SV_DispatchThreadID)
             float3 d = sp.x * u + sp.y * v + sp.z * hit.hitnormal;
 			
 			ray.direction = reflect(ray.direction, d);
-			diffuse *= max(0, dot(d, ray.direction));
+			
+			    acc += mask * _Materials[hit.matid].emissive;
+			    mask *= _Materials[hit.matid].albedo;
+			
 		}
 		else {
-			col = diffuse * SampleSky(ray.direction);
+			//col.rgb = col.rgb * SampleSky(ray.direction);
+			acc += mask * SampleSky(ray.direction);
 			break;
 		}
 	}
 
-	_Result[id.xy] = col;
+	_Result[id.xy] = float4(acc, 1.0);
 }

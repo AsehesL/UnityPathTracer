@@ -9,6 +9,8 @@ public class PathTracer : MonoBehaviour
     public ComputeShader computeShader;
 
     public Shader shader;
+
+    public float adapted;
     
     private Camera m_Camera;
 
@@ -39,7 +41,7 @@ public class PathTracer : MonoBehaviour
         int width = (int) (((float) Screen.width));
         int height = (int) (((float) Screen.height));
 
-        m_RenderTexture = new RenderTexture(width, height, 24);
+        m_RenderTexture = new RenderTexture(width, height, 24, RenderTextureFormat.ARGBHalf);
         m_RenderTexture.enableRandomWrite = true;
         m_RenderTexture.Create();
 
@@ -103,10 +105,8 @@ public class PathTracer : MonoBehaviour
                 triangle.matid = materials.Count;
                 tris.Add(triangle);
             }
-            
-            PathTracerMaterial mat = new PathTracerMaterial();
-            mat.albedo = new Vector3(t.Key.albedo.r,t.Key.albedo.g, t.Key.albedo.b);
-            mat.roughness = t.Key.roughness;
+
+            PathTracerMaterial mat = t.Key.GetMaterial();
             
             materials.Add(mat);
         }
@@ -191,17 +191,18 @@ public class PathTracer : MonoBehaviour
     {
         if (m_RenderTexture)
         {
+            RenderTexture temp = RenderTexture.GetTemporary(source.width, source.height, source.depth, RenderTextureFormat.DefaultHDR);
             if (!m_TempRT)
             {
-                Graphics.Blit(m_RenderTexture, destination);
-                m_TempRT = RenderTexture.GetTemporary(m_RenderTexture.width, m_RenderTexture.height);
+                Graphics.Blit(m_RenderTexture, temp);
+                m_TempRT = RenderTexture.GetTemporary(m_RenderTexture.width, m_RenderTexture.height, m_RenderTexture.depth, RenderTextureFormat.DefaultHDR);
             }
             else
             {
                 if (m_LocalToWorld != transform.localToWorldMatrix)
                 {
                     m_LocalToWorld = transform.localToWorldMatrix;
-                    Graphics.Blit(m_RenderTexture, destination);
+                    Graphics.Blit(m_RenderTexture, temp);
                     m_Frame = 0.0f;
                 }
                 else
@@ -209,15 +210,17 @@ public class PathTracer : MonoBehaviour
 
                     m_Material.SetFloat("_Frame", m_Frame);
                     m_Material.SetTexture("_Cache", m_TempRT);
-                    Graphics.Blit(m_RenderTexture, destination, m_Material);
+                    Graphics.Blit(m_RenderTexture, temp, m_Material, 0);
 
                     m_Frame += 1.0f;
                 }
             }
 
-            Graphics.Blit(destination, m_TempRT);
+            Graphics.Blit(temp, m_TempRT);
             //Graphics.Blit(m_RenderTexture, destination);
-
+            m_Material.SetFloat("_Adapted", adapted);
+            Graphics.Blit(temp, destination, m_Material, 2);
+            RenderTexture.ReleaseTemporary(temp);
 
         }
         else

@@ -44,4 +44,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   albedo: {r: 1, g: 1, b: 1, a: 1}
-  roughness: 0.39
+  emissive: {r: 0, g: 0, b: 0, a: 0}
+  emissiveIndentity: 0
+  roughness: 0.1
+  trancparency: 0
