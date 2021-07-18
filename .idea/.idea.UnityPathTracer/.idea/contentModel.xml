@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ContentModelStore">
+    <e p="C:\Users\huanc\.Rider2019.1\system\extResources" t="IncludeRecursive" />
+    <e p="C:\Users\huanc\.Rider2019.1\system\resharper-host\local\Transient\ReSharperHost\v191\SolutionCaches\_UnityPathTracer.1649995487.00" t="ExcludeRecursive" />
+    <e p="D:\_Working\_Projects\UnityPathTracer" t="IncludeRecursive">
+      <e p="Assembly-CSharp-Editor.csproj" t="IncludeRecursive" />
+      <e p="Assembly-CSharp.csproj" t="IncludeRecursive" />
+      <e p="Assets" t="Include">
+        <e p="Scripts" t="Include">
+          <e p="CameraController.cs" t="Include" />
+          <e p="LBVH.cs" t="Include" />
+          <e p="LKDTree.cs" t="Include" />
+          <e p="Node.cs" t="Include" />
+          <e p="PathTracer.cs" t="Include" />
+          <e p="PathTracingEffect.cs" t="Include" />
+          <e p="PTMaterial.cs" t="Include" />
+          <e p="PTRenderer.cs" t="Include" />
+          <e p="TestPT.cs" t="Include" />
+          <e p="Triangle.cs" t="Include" />
+          <e p="Utils.cs" t="Include" />
+        </e>
+        <e p="Shaders" t="Include">
+          <e p="CacheMix.shader" t="Include" />
+          <e p="PathTracerCS.compute" t="Include" />
+          <e p="PathTracingCS.compute" t="Include" />
+          <e p="TestPT_CS.compute" t="Include" />
+          <e p="TestRayTrace.compute" t="Include" />
+        </e>
+        <e p="Test" t="Include">
+          <e p="BVH.cs" t="Include" />
+          <e p="BVHPTTest.cs" t="Include" />
+          <e p="Editor" t="Include">
+            <e p="HaDebugTest.cs" t="Include" />
+            <e p="SkyCreator.cs" t="Include" />
+          </e>
+          <e p="GPUBVHHitTest.cs" t="Include" />
+          <e p="LBVHDraw 1.shader" t="Include" />
+          <e p="OnlyHitTest.compute" t="Include" />
+          <e p="OnlyHitTest.cs" t="Include" />
+          <e p="PTTest.cs" t="Include" />
+        </e>
+      </e>
+      <e p="obj" t="ExcludeRecursive" />
+      <e p="Packages" t="ExcludeRecursive" />
+      <e p="Temp\bin" t="ExcludeRecursive" />
+      <e p="UnityPathTracer.sln" t="IncludeFlat" />
+    </e>
+  </component>
+</project>

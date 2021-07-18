@@ -1,0 +1,121 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel SimplePT
+
+#define SAMPLE_DIRECT_LIGHT 1
+#define MAX_DEPTH 5
+
+#include "PathTracing.cginc"
+#include "BRDF.cginc"
+
+struct SimplePTMaterial
+{
+    float3 albedo;
+    int shadingType;
+};
+
+StructuredBuffer<SimplePTMaterial> _Materials;
+
+RWTexture2D<float4> _Result;
+
+TextureCube<float4> _Sky;
+SamplerState _LinearClamp;
+
+int SimplePTShading(Ray ray, RaycastHit hit, out float3 radiance, out Ray newray)
+{
+    newray = (Ray)0;
+    SimplePTMaterial mat = _Materials[hit.matId];
+    if (mat.shadingType == SHADING_TYPE_EMISSIVE)
+    {
+        float em = 1.0;
+        if (dot(hit.normal.xyz, newray.direction) < 0 || hit.normal.w < 0)
+            em = 0.0;
+        radiance = mat.albedo * em;
+        return -1;
+    }
+    newray.start = hit.position;
+    if (mat.shadingType == SHADING_TYPE_REFLECT)
+    {
+        newray.direction = reflect(ray.direction, hit.normal.xyz);
+        radiance = mat.albedo;
+        return 1;
+    }
+    if (mat.shadingType == SHADING_TYPE_REFRACT)
+    {
+        float eta = hit.normal.w < 0 ? 1.33f : 1.0f / 1.33f;
+        float3 rayDir = normalize(ray.direction);
+        float3 hitNormal = normalize(hit.normal.xyz);
+        float ndv = dot(-rayDir, hitNormal);
+        float3 litDir;
+        if (Refract(rayDir, hitNormal, eta, litDir) && FresnelRefract(ndv, eta) <= Rand())
+        {
+            newray.direction = normalize(litDir);
+            newray.start -= hitNormal * PT_FLT_DELTA;
+        }
+        else
+        {
+            newray.direction = normalize(reflect(rayDir, hitNormal));
+        }
+        radiance = mat.albedo;
+        return 1;
+    }
+
+#if SAMPLE_DIRECT_LIGHT
+    newray.start = hit.position;
+    float3 ldir0, ldir1;
+    float pdf0, pdf1;
+    DirectionalSample(hit, ldir0, pdf0);
+    CosineSample(hit, ldir1, pdf1);
+
+    float w0 = pdf0 / (pdf0 + pdf1);
+    float w1 = pdf1 / (pdf0 + pdf1);
+    float w = 0;
+    float pdf = 0;
+
+    float p = Rand();
+    if (p < w0)
+    {
+        newray.direction = ldir0;
+        w = w0;
+        pdf = pdf0;
+    }
+    else
+    {
+        newray.direction = ldir1;
+        w = w1;
+        pdf = pdf1;
+    }
+    if (pdf < 0)
+        radiance = 0;
+    else
+        radiance = max(0, dot(hit.normal.xyz, newray.direction)) * mat.albedo * PT_INVPI / pdf * w;
+    return 1;
+#else
+    float3 ldir;
+    float pdf;
+    CosineSample(hit, ldir, pdf);
+    newray.direction = ldir;
+    radiance = max(0, dot(hit.normal.xyz, newray.direction)) * mat.albedo * PT_INVPI / pdf;
+    return 1;
+#endif
+}
+
+float3 SimplePTSky(Ray ray)
+{
+    return pow(_Sky.SampleLevel(_LinearClamp, ray.direction, 0).rgb, 2.2);
+    //return _Sky.SampleLevel(_LinearClamp, ray.direction, 0).rgb;
+}
+
+IMPLEMENT_PATH_TRACING(TestPT, SimplePTSky, SimplePTShading)
+
+[numthreads(32,32,1)]
+void SimplePT(uint3 id : SV_DispatchThreadID)
+{
+    InitRandomSeed(id.x, id.y);
+
+    float2 uv = float2(((float)id.x + Rand()) / _ScreenWidth, ((float)id.y + Rand()) / _ScreenHeight);
+    
+    float3 color = EXECUTE_PATH_TRACING(TestPT, uv);
+
+    color = pow(color, 0.45);
+    _Result[id.xy] = float4(color, 1.0);
+}
