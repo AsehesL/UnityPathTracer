@@ -37,7 +37,7 @@ public struct SimplePTMaterial
 }
 
 [CreateAssetMenu]
-public class SimplePathTracer : ToyPathTracingShaderBase
+public class SimplePathTracerShader : ToyPathTracingShaderBase
 {
     public ComputeShader computeShader;
 

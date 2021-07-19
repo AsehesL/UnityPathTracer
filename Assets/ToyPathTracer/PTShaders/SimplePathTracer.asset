@@ -9,7 +9,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
+  m_Script: {fileID: 11500000, guid: 63687fbf5c04053459e36539b5002845, type: 3}
   m_Name: SimplePathTracer
   m_EditorClassIdentifier: Assembly-CSharp::SimplePathTracer
   computeShader: {fileID: 7200000, guid: ef477660630b27b4f8f8052cd8f56afa, type: 3}
