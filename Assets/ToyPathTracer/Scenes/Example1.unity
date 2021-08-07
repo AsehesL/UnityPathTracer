@@ -828,8 +828,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   enableFilter: 1
-  skyTexture: {fileID: 0}
-  albedoTexture: {fileID: 2800000, guid: 16e78ea525e9d9245a0f6b6c286ff194, type: 3}
   shader: {fileID: 7200000, guid: 655b503ecf278ce4498c069c1eda6480, type: 3}
   kernelName: PTMain
   sampleDirect: 0
@@ -838,6 +836,13 @@ MonoBehaviour:
   sigma: 0.8
   KSigma: 1.8
   threshold: 0.25
+  textureParameters:
+  - name: _SkyEnv
+    texture: {fileID: 0}
+    cacheTexture: {fileID: 0}
+  - name: _AlbedoTex
+    texture: {fileID: 2800000, guid: db15f92cba251de4aabcc4a4865c2435, type: 3}
+    cacheTexture: {fileID: 0}
   m_TimeFilterShader: {fileID: 4800000, guid: 9bccf8727d2771849a7dbc77150d0096, type: 3}
   m_DenoiseShader: {fileID: 4800000, guid: 91b96e0ce93312448aa5663cc76636bd, type: 3}
 --- !u!114 &1034495017

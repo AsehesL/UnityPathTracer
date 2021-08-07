@@ -39,44 +39,6 @@ public class ToyPathTracingPipeline
 
     public bool isLightChanged;
 
-    public Texture SkyTexture
-    {
-        get
-        {
-            return m_skyTexture;
-        }
-        set
-        {
-            if (m_skyTexture == value)
-                return;
-            isLightChanged = true;
-            m_skyTexture = value;
-            if (m_PathTracingShader != null && m_KernelIndex >= 0)
-                m_PathTracingShader.SetTexture(m_KernelIndex, "_SkyEnv", m_skyTexture);
-        }
-    }
-
-    public Texture AlbedoTexture
-    {
-        get
-        {
-            return m_albedoTexture;
-        }
-        set
-        {
-            if (m_albedoTexture == value)
-                return;
-            isLightChanged = true;
-            m_albedoTexture = value;
-            if (m_PathTracingShader != null && m_KernelIndex >= 0)
-                m_PathTracingShader.SetTexture(m_KernelIndex, "_AlbedoTex", m_albedoTexture);
-        }
-    }
-
-    private Texture m_skyTexture = null;
-
-    private Texture m_albedoTexture = null;
-
     private const int kTileSize = 32;
 
     private int m_DispatchThreadGroupsX;
@@ -128,6 +90,15 @@ public class ToyPathTracingPipeline
         m_LightWeights = new List<float>();
     }
 
+    public void SetTexture(string name, Texture texture)
+    {
+        if (m_PathTracingShader != null && m_KernelIndex >= 0)
+        {
+            isLightChanged = true;
+            m_PathTracingShader.SetTexture(m_KernelIndex, name, texture);
+        }
+    }
+
     public void BuildPipeline()
     {
         if (IsInitialized)
@@ -156,9 +127,6 @@ public class ToyPathTracingPipeline
         int bvhRoot = BVH.Build(primitives, out bvh, out spheres, out quads, out cubes, out triangles);
         BuildComputeBuffers(bvhRoot, materials, bvh, spheres, quads, cubes, triangles);
         IsInitialized = true;
-
-        m_PathTracingShader.SetTexture(m_KernelIndex, "_SkyEnv", Texture2D.blackTexture);
-        m_PathTracingShader.SetTexture(m_KernelIndex, "_AlbedoTex", Texture2D.whiteTexture);
 
         Debug.Log($"BVH Root:{bvhRoot}, BVH Childs:{bvh.Count}");
     }

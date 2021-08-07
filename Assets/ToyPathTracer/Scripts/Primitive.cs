@@ -15,7 +15,7 @@ public struct PTMaterial
     public float roughness;
     public float metallic;
     public int emission;
-    public int checkBoard;
+    public int useTexture;
 
     public PTMaterial(Material material)
     {
@@ -23,8 +23,8 @@ public struct PTMaterial
         Color albedoColor = material.GetColor("_Color");
         float smoothness = material.GetFloat("_Glossiness");
         float metallic = material.GetFloat("_Metallic");
-        Texture tex = material.GetTexture("_MainTex");
-        checkBoard = tex != null ? 1 : -1;
+        float use = material.GetFloat("_UseTexture");
+        useTexture = use > 0.5f ? 1 : -1;
         if (emissionColor.grayscale > 0.01f)
         {
             emission = 1;

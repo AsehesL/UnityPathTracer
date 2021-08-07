@@ -5,7 +5,7 @@
 #include "BRDF.cginc"
 #include "SkyLight.cginc"
 
-#if PRIMITIVE_HAS_UV
+#if PRIMITIVE_USE_TEXTURE
 Texture2D<float4> _AlbedoTex;
 #endif
 
@@ -18,9 +18,9 @@ int PBRShading(Ray ray, RaycastHit hit, out float3 radiance, out Ray newray)
     float3 albedoColor = mat.albedo.rgb;
     float3 rayDir = normalize(ray.direction);
 
-    if (mat.checkBoard > 0)
+    if (mat.useTexture > 0)
     {
-#if PRIMITIVE_HAS_UV
+#if PRIMITIVE_USE_TEXTURE
         albedoColor = albedoColor * _AlbedoTex.SampleLevel(_LinearRepeat, hit.uv, 0).rgb;
 #else
         float2 c = floor(hit.position.xz) * 0.5;

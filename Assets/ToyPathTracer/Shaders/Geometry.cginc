@@ -70,7 +70,7 @@ int RaycastSphere(Ray ray, Sphere sphere, inout RaycastHit hit)
     }
     SetHitSurface(ray, ray.start + ray.direction * t, (tocenter + ray.direction * t) / sphere.positionAndRadius.w, hit);
 
-#if PRIMITIVE_HAS_UV
+#if PRIMITIVE_USE_TEXTURE
     float theta = acos(-hit.normal.y);
     float phi = atan2(-hit.normal.z, hit.normal.x) + PT_PI;
     hit.uv = float2(phi * 0.5 * PT_INVPI, theta * PT_INVPI);
@@ -98,7 +98,7 @@ int RaycastQuad(Ray ray, Quad quad, inout RaycastHit hit)
         return -1;
     SetHitSurface(ray, p, quad.normal, hit);
 
-#if PRIMITIVE_HAS_UV
+#if PRIMITIVE_USE_TEXTURE
     float3 lp = hit.position - quad.position;
     hit.uv = float2(dot(lp, quad.forward.xyz) / length(quad.forward), -dot(lp, quad.right.xyz) / length(quad.right));
 #endif
@@ -165,7 +165,7 @@ int RaycastCube(Ray ray, Cube cube, inout RaycastHit hit)
     normal = mul((float3x3)cube.localToWorld, normal).xyz;
     SetHitSurface(ray, hitP, normal, hit);
 
-#if PRIMITIVE_HAS_UV
+#if PRIMITIVE_USE_TEXTURE
     hit.uv = float2(0,0);
 #endif
 
@@ -263,7 +263,7 @@ int RaycastTriangle(Ray ray, Triangle tri, inout RaycastHit hit)
 
     SetHitSurface(ray, hitP, normal, hit);
 
-#if PRIMITIVE_HAS_UV
+#if PRIMITIVE_USE_TEXTURE
     hit.uv = float2(0, 0);
 #endif
 

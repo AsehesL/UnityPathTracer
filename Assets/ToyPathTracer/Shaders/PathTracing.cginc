@@ -93,7 +93,7 @@ Ray ScreenSpaceToWorldRay(float2 uv)
 #endif
 }
 
-#if PRIMITIVE_HAS_UV
+#if PRIMITIVE_USE_TEXTURE
 #define INITIALIZE_RAY_CAST_HIT \
 	RaycastHit hit; \
 	hit.distance = PT_FLT_MAX; \

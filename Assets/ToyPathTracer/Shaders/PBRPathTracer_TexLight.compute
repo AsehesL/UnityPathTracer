@@ -4,7 +4,7 @@
 #pragma enable_d3d11_debug_symbols 
 
 #define SAMPLE_DIRECT_LIGHT 0
-#define PRIMITIVE_HAS_UV 1
+#define PRIMITIVE_USE_TEXTURE 1
 #define MAX_DEPTH 5
 
 #ifndef USE_THIN_LENS

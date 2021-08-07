@@ -18,8 +18,8 @@
 #define SHADING_TYPE_REFRACT	2
 #define SHADING_TYPE_EMISSION	3
 
-#ifndef PRIMITIVE_HAS_UV
-#define PRIMITIVE_HAS_UV 0
+#ifndef PRIMITIVE_USE_TEXTURE
+#define PRIMITIVE_USE_TEXTURE 0
 #endif
 
 struct Ray {
@@ -31,7 +31,7 @@ struct RaycastHit {
 	float distance;
 	float3 position;
 	float4 normal;
-#if PRIMITIVE_HAS_UV
+#if PRIMITIVE_USE_TEXTURE
 	float2 uv;
 #endif
 	int matId;
@@ -46,7 +46,7 @@ struct PTMaterial
 	float roughness;
 	float metallic;
 	int emission;
-	int checkBoard;
+	int useTexture;
 };
 
 StructuredBuffer<PTMaterial> _Materials;

@@ -1,15 +1,36 @@
-using System.Collections;
 using System.Collections.Generic;
-using System.Security.Cryptography;
 using UnityEngine;
+
+[System.Serializable]
+public class ToyPathTracerTextureParameter
+{
+    public string name;
+    public Texture texture;
+
+    [HideInInspector]
+    public Texture cacheTexture;
+
+    public Texture GetTexture()
+    {
+        if (texture == null)
+            return Texture2D.blackTexture;
+        return texture;
+    }
+
+    public bool IsChanged()
+    {
+        if (cacheTexture != texture)
+        {
+            cacheTexture = texture;
+            return true;
+        }
+        return false;
+    }
+}
 
 public class ToyPathTracer : MonoBehaviour
 {
     public bool enableFilter = true;
-
-    public Texture skyTexture;
-
-    public Texture albedoTexture;
 
     public ComputeShader shader;
 
@@ -24,6 +45,8 @@ public class ToyPathTracer : MonoBehaviour
     public float sigma = 0.8f;
     public float KSigma = 1.8f;
     public float threshold = 0.25f;
+
+    public List<ToyPathTracerTextureParameter> textureParameters;
 
     [SerializeField]
     [HideInInspector]
@@ -55,8 +78,16 @@ public class ToyPathTracer : MonoBehaviour
 
         m_Pipeline.BuildPipeline();
 
-        m_Pipeline.SkyTexture = skyTexture;
-        m_Pipeline.AlbedoTexture = albedoTexture;
+        if (textureParameters != null)
+        {
+            for (int i=0;i<textureParameters.Count;i++)
+            {
+                if (!string.IsNullOrEmpty(textureParameters[i].name))
+                {
+                    m_Pipeline.SetTexture(textureParameters[i].name, textureParameters[i].GetTexture());
+                }
+            }
+        }
 
         m_TimeFilterMat = m_TimeFilterShader == null ? null : new Material(m_TimeFilterShader);
         m_DenoiseMat = m_DenoiseShader == null ? null : new Material(m_DenoiseShader);
@@ -91,10 +122,14 @@ public class ToyPathTracer : MonoBehaviour
 
     private void OnRenderImage(RenderTexture source, RenderTexture destination)
     {
-        if (m_Pipeline.SkyTexture != skyTexture)
-            m_Pipeline.SkyTexture = skyTexture;
-        if (m_Pipeline.AlbedoTexture != albedoTexture)
-            m_Pipeline.AlbedoTexture = albedoTexture;
+        if (textureParameters != null)
+        {
+            for (int i = 0; i < textureParameters.Count; i++)
+            {
+                if (textureParameters[i].IsChanged() && !string.IsNullOrEmpty(textureParameters[i].name))
+                    m_Pipeline.SetTexture(textureParameters[i].name, textureParameters[i].texture);
+            }
+        }
         m_Pipeline.focal = focal;
         m_Pipeline.radius = radius;
         RenderTexture rt = m_Pipeline.ExecutePipeline();
