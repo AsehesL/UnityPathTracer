@@ -10,12 +10,17 @@
 
 #define PRIMITIVE_SPHERE	0
 #define PRIMITIVE_QUAD		1
-#define PRIMITIVE_TRIANGLE	2
+#define PRIMITIVE_CUBE  	2
+#define PRIMITIVE_TRIANGLE	3
 
 #define SHADING_TYPE_DIFFUSE	0
 #define SHADING_TYPE_REFLECT	1
 #define SHADING_TYPE_REFRACT	2
-#define SHADING_TYPE_EMISSIVE	3
+#define SHADING_TYPE_EMISSION	3
+
+#ifndef PRIMITIVE_HAS_UV
+#define PRIMITIVE_HAS_UV 0
+#endif
 
 struct Ray {
 	float3 start;
@@ -26,23 +31,24 @@ struct RaycastHit {
 	float distance;
 	float3 position;
 	float4 normal;
+#if PRIMITIVE_HAS_UV
+	float2 uv;
+#endif
 	int matId;
 };
 
 int _ScreenWidth;
 int _ScreenHeight;
 
-bool Refract(float3 i, float3 n, float eta, out float3 result)
+struct PTMaterial
 {
-    float cosi = dot(-1.0 * i, n);
-    float cost2 = 1.0 - eta * eta * (1.0 - cosi * cosi);
-    if (cost2 > 0.0)
-    {
-        result = eta * i + ((eta * cosi - sqrt(abs(cost2))) * n);
-        return true;
-    }
+	float4 albedo;
+	float roughness;
+	float metallic;
+	int emission;
+	int checkBoard;
+};
 
-    return false;
-}
+StructuredBuffer<PTMaterial> _Materials;
 
 #endif

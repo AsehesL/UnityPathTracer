@@ -3,7 +3,12 @@ guid: e7210f748b1730a4b84bc42c8590a1a8
 MonoImporter:
   externalObjects: {}
   serializedVersion: 2
-  defaultReferences: []
+  defaultReferences:
+  - skyTexture: {instanceID: 0}
+  - shader: {instanceID: 0}
+  - m_TimeFilterShader: {fileID: 4800000, guid: 9bccf8727d2771849a7dbc77150d0096,
+      type: 3}
+  - m_DenoiseShader: {fileID: 4800000, guid: 91b96e0ce93312448aa5663cc76636bd, type: 3}
   executionOrder: 0
   icon: {instanceID: 0}
   userData: 

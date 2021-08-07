@@ -19,6 +19,7 @@ int _BVHNodeCount;
 
 StructuredBuffer<Sphere> _Spheres;
 StructuredBuffer<Quad> _Quads;
+StructuredBuffer<Cube> _Cubes;
 StructuredBuffer<Triangle> _Triangles;
 
 int RaycastPrimitive(Ray ray, int primitiveId, int primitiveType, inout RaycastHit hit)
@@ -27,6 +28,8 @@ int RaycastPrimitive(Ray ray, int primitiveId, int primitiveType, inout RaycastH
 		return RaycastSphere(ray, _Spheres[primitiveId], hit);
 	if (primitiveType == PRIMITIVE_QUAD)
 		return RaycastQuad(ray, _Quads[primitiveId], hit);
+	if (primitiveType == PRIMITIVE_CUBE)
+		return RaycastCube(ray, _Cubes[primitiveId], hit);
 	if (primitiveType == PRIMITIVE_TRIANGLE)
 		return RaycastTriangle(ray, _Triangles[primitiveId], hit);
 	return -1;

@@ -23,17 +23,6 @@ float3 SampleHemiSphere(float2 uv)
     return float3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
 }
 
-float3 SampleHemiSphereRough(float2 uv, float roughness)
-{
-    float a = roughness * roughness;
-
-    float phi = 2.0 * PT_PI * uv.x;
-    float cos_theta = sqrt((1.0 - uv.y) / (1.0 + (a * a - 1.0) * uv.y));
-    float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
-
-    return float3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
-}
-
 float2 SampleUnitDisk(float2 uv)
 {
     uv.x = 2.0 * uv.x - 1.0;

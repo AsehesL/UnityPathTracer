@@ -8,6 +8,7 @@
 #include "Defines.cginc"
 #include "Scene.cginc"
 #include "Sampler.cginc"
+#include "Common.cginc"
 
 float _NearClipWidth;
 float _NearClipHeight;
@@ -19,17 +20,6 @@ float _ThinLensRadius;
 #endif
 
 float4x4 _PathTracerCameraToWorld;
-
-float3 ONB(float3 normal, float3 direction)
-{
-	float3 w = normal;
-	float3 u = normalize(cross(float3(0.00424f, 1, 0.00764f), w));
-	float3 v = cross(u, w);
-	float3 l = direction.x * u + direction.y * v + direction.z * w;
-	//if (dot(l, normal) < 0.0)
-	//	l = -direction.x * u - direction.y * v - direction.z * w;
-	return normalize(l);
-}
 
 #if SAMPLE_DIRECT_LIGHT
 void DirectionalSample(RaycastHit hit, out float3 lightDir, out float pdf)
@@ -103,15 +93,30 @@ Ray ScreenSpaceToWorldRay(float2 uv)
 #endif
 }
 
-#define IMPLEMENT_PATH_TRACING(NAME, RAY_MISS_SHADER, RAY_HIT_SHADER) \
-float4 Tracing_##NAME##_Func(float2 uv) \
-{ \
-	Ray ray = ScreenSpaceToWorldRay(uv); \
+#if PRIMITIVE_HAS_UV
+#define INITIALIZE_RAY_CAST_HIT \
 	RaycastHit hit; \
 	hit.distance = PT_FLT_MAX; \
 	hit.position = 0; \
 	hit.normal = 0; \
 	hit.matId = 0; \
+	hit.uv = 0; \
+
+#else
+#define INITIALIZE_RAY_CAST_HIT \
+	RaycastHit hit; \
+	hit.distance = PT_FLT_MAX; \
+	hit.position = 0; \
+	hit.normal = 0; \
+	hit.matId = 0; \
+
+#endif
+
+#define IMPLEMENT_PATH_TRACING(NAME, RAY_MISS_SHADER, RAY_HIT_SHADER) \
+float4 Tracing_##NAME##_Func(float2 uv) \
+{ \
+	Ray ray = ScreenSpaceToWorldRay(uv); \
+	INITIALIZE_RAY_CAST_HIT \
 	int isHit = -1; \
 	int continueTracing = -1; \
 	float3 radiance = 0.0; \

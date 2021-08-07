@@ -1,5 +1,0 @@
-#pragma kernel PBRPathTracerMain
-
-#define USE_THIN_LENS 1
-
-#include "PBRPathTracer.compute"

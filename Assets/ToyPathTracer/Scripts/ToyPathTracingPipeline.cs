@@ -4,29 +4,78 @@ using UnityEngine;
 
 public class ToyPathTracingPipeline
 {
+    private class PTLight
+    {
+        public Primitive primitive { get; private set; }
+
+        private PTMaterial m_Material;
+
+        private float m_Flux;
+        private float m_PDF;
+
+        public PTLight(Primitive primitive, PTMaterial material)
+        {
+            this.primitive = primitive;
+            m_Material = material;
+            float irradiance = m_Material.albedo.grayscale;
+            float area = this.primitive.GetArea();
+            m_Flux = irradiance * area;
+            m_PDF = 1.0f / area;
+        }
+
+        public float GetFlux()
+        {
+            return m_Flux;
+        }
+
+        public float GetPDF()
+        {
+            return m_PDF;
+        }
+    }
+
     public float focal;
     public float radius;
 
-    public bool IsLightChanged
-    {
-        get;private set;
-    }
+    public bool isLightChanged;
 
-    public Cubemap SkyCubeMap
+    public Texture SkyTexture
     {
         get
         {
-            return m_SkyCubeMap;
+            return m_skyTexture;
         }
         set
         {
-            m_SkyCubeMap = value;
+            if (m_skyTexture == value)
+                return;
+            isLightChanged = true;
+            m_skyTexture = value;
             if (m_PathTracingShader != null && m_KernelIndex >= 0)
-                m_PathTracingShader.SetTexture(m_KernelIndex, "_Sky", m_SkyCubeMap);
+                m_PathTracingShader.SetTexture(m_KernelIndex, "_SkyEnv", m_skyTexture);
         }
     }
 
-    private Cubemap m_SkyCubeMap = null;
+    public Texture AlbedoTexture
+    {
+        get
+        {
+            return m_albedoTexture;
+        }
+        set
+        {
+            if (m_albedoTexture == value)
+                return;
+            isLightChanged = true;
+            m_albedoTexture = value;
+            if (m_PathTracingShader != null && m_KernelIndex >= 0)
+                m_PathTracingShader.SetTexture(m_KernelIndex, "_AlbedoTex", m_albedoTexture);
+        }
+    }
+
+    private Texture m_skyTexture = null;
+
+    private Texture m_albedoTexture = null;
 
     private const int kTileSize = 32;
 
@@ -43,6 +92,7 @@ public class ToyPathTracingPipeline
 
     private ComputeBuffer m_SpheresBuffer;
     private ComputeBuffer m_QuadsBuffer;
+    private ComputeBuffer m_CubeBuffer;
     private ComputeBuffer m_TrianglesBuffer;
     private ComputeBuffer m_NodesBuffer;
 
@@ -50,11 +100,10 @@ public class ToyPathTracingPipeline
 
     private bool m_SampleDirectLight;
 
-    private Primitive m_LightPrimitive = null;
-    private Vector3 m_LightPos;
-    private float m_LightRadius;
+    private string m_KernelName;
 
-    private ToyPathTracingShaderBase m_shader;
+    private List<PTLight> m_Lights;
+    private List<float> m_LightWeights;
 
     public bool IsInitialized
     {
@@ -62,18 +111,21 @@ public class ToyPathTracingPipeline
         private set;
     }
 
-    public ToyPathTracingPipeline(Camera camera, ToyPathTracingShaderBase shader)
+    public ToyPathTracingPipeline(Camera camera, ComputeShader shader, string kernelName, bool sampleDirectLight)
     {
-        m_shader = shader;
-        m_PathTracingShader = shader.GetShader();
+        m_KernelName = kernelName;
+        m_PathTracingShader = shader;
 
         m_Camera = camera;
 
-        m_SampleDirectLight = shader.ShouldSampleDirectLight();
+        m_SampleDirectLight = sampleDirectLight;
 
         IsInitialized = false;
 
-        IsLightChanged = false;
+        isLightChanged = false;
+
+        m_Lights = new List<PTLight>();
+        m_LightWeights = new List<float>();
     }
 
     public void BuildPipeline()
@@ -82,7 +134,7 @@ public class ToyPathTracingPipeline
             return;
         if (m_PathTracingShader == null) return;
         if (m_Camera == null) return;
-        m_KernelIndex = m_PathTracingShader.FindKernel(m_shader.GetKernelName());
+        m_KernelIndex = m_PathTracingShader.FindKernel(m_KernelName);
         if (m_KernelIndex < 0)
             return;
 
@@ -93,18 +145,22 @@ public class ToyPathTracingPipeline
         m_DispatchThreadGroupsX = Mathf.CeilToInt((float)m_RenderTexture.width / kTileSize);
         m_DispatchThreadGroupsY = Mathf.CeilToInt((float)m_RenderTexture.height / kTileSize);
 
-        List<Material> materials;
+        List<PTMaterial> materials;
         List<Primitive> primitives;
         CollectPrimitives(out materials, out primitives);
         List<Sphere> spheres;
         List<Quad> quads;
+        List<Cube> cubes;
         List<Triangle> triangles;
         List<BVHNode> bvh;
-        int bvhRoot = BVH.Build(primitives, out bvh, out spheres, out quads, out triangles);
-        BuildComputeBuffers(bvhRoot, materials, bvh, spheres, quads, triangles);
+        int bvhRoot = BVH.Build(primitives, out bvh, out spheres, out quads, out cubes, out triangles);
+        BuildComputeBuffers(bvhRoot, materials, bvh, spheres, quads, cubes, triangles);
         IsInitialized = true;
 
-        m_PathTracingShader.SetTexture(m_KernelIndex, "_Sky", Texture2D.blackTexture);
+        m_PathTracingShader.SetTexture(m_KernelIndex, "_SkyEnv", Texture2D.blackTexture);
+        m_PathTracingShader.SetTexture(m_KernelIndex, "_AlbedoTex", Texture2D.whiteTexture);
+
+        Debug.Log($"BVH Root:{bvhRoot}, BVH Childs:{bvh.Count}");
     }
 
     public RenderTexture ExecutePipeline()
@@ -114,26 +170,49 @@ public class ToyPathTracingPipeline
             return null;
         }
 
-        if (m_LightPrimitive != null)
+        if (m_Lights != null && m_Lights.Count > 0)
         {
-            Vector3 lightPos = m_LightPrimitive.center;
-            float lightRadius = m_LightPrimitive.radius;
-            if (m_LightPos != lightPos || m_LightRadius != lightRadius)
+            float lightProbability = Random.Range(0.0f, 1.0f);
+            float weight = 0.0f;
+            PTLight currentLight = null;
+            for(int i=0;i<m_Lights.Count;i++)
             {
-                IsLightChanged = true;
-                m_LightPos = lightPos;
-                m_LightRadius = lightRadius;
+                if (m_LightWeights[i] + weight > lightProbability)
+                {
+                    currentLight = m_Lights[i];
+                    break;
+                }
+                weight += m_LightWeights[i];
             }
-            else
+            if (currentLight != null && (currentLight.primitive.primitiveType == PrimitiveType.Sphere || currentLight.primitive.primitiveType == PrimitiveType.Quad))
             {
-                IsLightChanged = false;
+                if (currentLight.primitive.primitiveType == PrimitiveType.Sphere)
+                {
+                    Sphere lightSphere = currentLight.primitive.CreateSphere();
+                    Vector4 lightPosAndRadius = lightSphere.positionAndRadius;
+                    if (currentLight.primitive.IsChanged())
+                        isLightChanged = true;
+                    m_PathTracingShader.SetVector("_LightCenterAndRadius", lightPosAndRadius);
+                }
+                else if(currentLight.primitive.primitiveType == PrimitiveType.Quad)
+                {
+                    Quad lightQuad = currentLight.primitive.CreateQuad();
+                    Vector4 lightRight = lightQuad.right;
+                    Vector4 lightForward = lightQuad.forward;
+                    Vector3 lightNormal = lightQuad.normal;
+                    Vector3 lightPosition = lightQuad.position;
+                    if (currentLight.primitive.IsChanged())
+                        isLightChanged = true;
+                    m_PathTracingShader.SetVector("_LightRight", lightRight);
+                    m_PathTracingShader.SetVector("_LightForward", lightForward);
+                    m_PathTracingShader.SetVector("_LightPosition", lightPosition);
+                    m_PathTracingShader.SetVector("_LightNormal", lightNormal);
+                }    
+                int lightMat = currentLight.primitive.matId;
+                m_PathTracingShader.SetInt("_LightMatId", lightMat);
+                m_PathTracingShader.SetInt("_LightPrimivateType", (int)currentLight.primitive.primitiveType);
+                m_PathTracingShader.SetFloat("_LightPDF", currentLight.GetPDF());
             }
-            int lightMat = m_LightPrimitive.matId;
-            float area = 4.0f * Mathf.PI * lightRadius * lightRadius;
-
-            m_PathTracingShader.SetVector("_LightCenterAndRadius", new Vector4(lightPos.x, lightPos.y, lightPos.z, lightRadius));
-            m_PathTracingShader.SetInt("_LightMatId", lightMat);
-            m_PathTracingShader.SetFloat("_LightPDF", 1.0f / area);
         }
 
         float h = m_Camera.nearClipPlane * Mathf.Tan(m_Camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
@@ -159,6 +238,8 @@ public class ToyPathTracingPipeline
             m_SpheresBuffer.Release();
         if (m_QuadsBuffer != null)
             m_QuadsBuffer.Release();
+        if (m_CubeBuffer != null)
+            m_CubeBuffer.Release();
         if (m_TrianglesBuffer != null)
             m_TrianglesBuffer.Release();
         if (m_NodesBuffer != null)
@@ -167,6 +248,7 @@ public class ToyPathTracingPipeline
             m_MaterialsBuffer.Release();
         m_SpheresBuffer = null;
         m_QuadsBuffer = null;
+        m_CubeBuffer = null;
         m_TrianglesBuffer = null;
         m_NodesBuffer = null;
         m_MaterialsBuffer = null;
@@ -175,7 +257,7 @@ public class ToyPathTracingPipeline
         m_PathTracingShader = null;
     }
 
-    private void CollectPrimitives(out List<Material> materials, out List<Primitive> primitives)
+    private void CollectPrimitives(out List<PTMaterial> materials, out List<Primitive> primitives)
     {
         MeshRenderer[] meshRenderers = Object.FindObjectsOfType<MeshRenderer>();
         Dictionary<Material, List<Primitive>> primitivesWithMaterial = null;
@@ -185,7 +267,8 @@ public class ToyPathTracingPipeline
         }
 
         primitives = new List<Primitive>();
-        materials = new List<Material>();
+        materials = new List<PTMaterial>();
+        float totalLightWeight = 0.0f;
         if (primitivesWithMaterial != null)
         {
             foreach(var kvp in primitivesWithMaterial)
@@ -196,20 +279,35 @@ public class ToyPathTracingPipeline
                 {
                     Primitive primitive = kvp.Value[i];
                     primitive.matId = materials.Count;
-                    if (m_SampleDirectLight && m_shader.IsEmissive(kvp.Key))
+                    PTMaterial ptmat = new PTMaterial(kvp.Key);
+                    if (m_SampleDirectLight && ptmat.emission > 0 && (primitive.primitiveType == PrimitiveType.Sphere || primitive.primitiveType == PrimitiveType.Quad))
                     {
-                        m_LightPrimitive = primitive;
+                        PTLight light = new PTLight(primitive, ptmat);
+                        m_Lights.Add(light);
+                        float flux = light.GetFlux();
+                        m_LightWeights.Add(flux);
+                        totalLightWeight += flux;
                         continue;
                     }
                     primitives.Add(primitive);
                 }
-                materials.Add(kvp.Key);
+                materials.Add(new PTMaterial(kvp.Key));
             }
         }
-       
+        if (m_Lights.Count > 1)
+        {
+            for (int i=0;i<m_Lights.Count;i++)
+            {
+                primitives.Add(m_Lights[i].primitive);
+            }
+        }
+        for (int i = 0; i < m_LightWeights.Count; i++)
+        {
+            m_LightWeights[i] = m_LightWeights[i] / totalLightWeight;
+        }
     }
 
-    private void BuildComputeBuffers(int rootIndex, List<Material> materials, List<BVHNode> bvh, List<Sphere> spheres, List<Quad> quads, List<Triangle> triangles)
+    private void BuildComputeBuffers(int rootIndex, List<PTMaterial> materials, List<BVHNode> bvh, List<Sphere> spheres, List<Quad> quads, List<Cube> cubes, List<Triangle> triangles)
     {
         m_SpheresBuffer = new ComputeBuffer(spheres != null && spheres.Count > 0 ? spheres.Count : 1, System.Runtime.InteropServices.Marshal.SizeOf(typeof(Sphere)));
         if (spheres != null && spheres.Count > 0)
@@ -219,19 +317,25 @@ public class ToyPathTracingPipeline
         if (quads != null && quads.Count > 0)
             m_QuadsBuffer.SetData(quads.ToArray());
 
+        m_CubeBuffer = new ComputeBuffer(cubes != null && cubes.Count > 0 ? cubes.Count : 1, System.Runtime.InteropServices.Marshal.SizeOf(typeof(Cube)));
+        if (cubes != null && cubes.Count > 0)
+            m_CubeBuffer.SetData(cubes.ToArray());
+
         m_TrianglesBuffer = new ComputeBuffer(triangles != null && triangles.Count > 0 ? triangles.Count : 1, System.Runtime.InteropServices.Marshal.SizeOf(typeof(Triangle)));
         if (triangles != null && triangles.Count > 0)
             m_TrianglesBuffer.SetData(triangles.ToArray());
 
-        m_NodesBuffer = new ComputeBuffer(bvh.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(BVHNode)));
-        m_NodesBuffer.SetData(bvh.ToArray());
+        m_NodesBuffer = new ComputeBuffer(bvh != null && bvh.Count > 0 ? bvh.Count : 1, System.Runtime.InteropServices.Marshal.SizeOf(typeof(BVHNode)));
+        if (bvh != null && bvh.Count > 0)
+            m_NodesBuffer.SetData(bvh.ToArray());
 
-        m_MaterialsBuffer = m_shader.CreateMaterialBuffer(materials);
-        //m_MaterialsBuffer = new ComputeBuffer(materials.Count, System.Runtime.InteropServices.Marshal.SizeOf(typeof(PathTracerMaterial)));
-        //m_MaterialsBuffer.SetData(materials.ToArray());
+        m_MaterialsBuffer = new ComputeBuffer(materials != null && materials.Count > 0 ? materials.Count : 1, System.Runtime.InteropServices.Marshal.SizeOf(typeof(PTMaterial)));
+        if (materials != null && materials.Count > 0)
+            m_MaterialsBuffer.SetData(materials.ToArray());
 
         m_PathTracingShader.SetBuffer(m_KernelIndex, "_Spheres", m_SpheresBuffer);
         m_PathTracingShader.SetBuffer(m_KernelIndex, "_Quads", m_QuadsBuffer);
+        m_PathTracingShader.SetBuffer(m_KernelIndex, "_Cubes", m_CubeBuffer);
         m_PathTracingShader.SetBuffer(m_KernelIndex, "_Triangles", m_TrianglesBuffer);
         m_PathTracingShader.SetBuffer(m_KernelIndex, "_BVHTree", m_NodesBuffer);
         m_PathTracingShader.SetBuffer(m_KernelIndex, "_Materials", m_MaterialsBuffer);

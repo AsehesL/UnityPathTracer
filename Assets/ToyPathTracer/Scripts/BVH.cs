@@ -2,6 +2,16 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+public struct BVHNode
+{
+    public Vector3 boundsMin;
+    public Vector3 boundsMax;
+    public int leftChild;
+    public int rightChild;
+    public int primitiveId;
+    public int primitiveType;
+}
+
 public static class BVH
 {
     class Node
@@ -12,7 +22,7 @@ public static class BVH
         public Primitive primitive;
     }
 
-    public static int Build(List<Primitive> primitives, out List<BVHNode> tree, out List<Sphere> spheres, out List<Quad> quads, out List<Triangle> triangles)
+    public static int Build(List<Primitive> primitives, out List<BVHNode> tree, out List<Sphere> spheres, out List<Quad> quads, out List<Cube> cubes, out List<Triangle> triangles)
     {
         if (primitives == null || primitives.Count == 0)
         {
@@ -20,6 +30,7 @@ public static class BVH
             spheres = null;
             quads = null;
             triangles = null;
+            cubes = null;
             return -1;
         }
         Bounds bounds = primitives[0].bounds;
@@ -46,6 +57,7 @@ public static class BVH
         tree = new List<BVHNode>();
         spheres = new List<Sphere>();
         quads = new List<Quad>();
+        cubes = new List<Cube>();
         triangles = new List<Triangle>();
         for (int i = 0; i < nodes.Count; i++)
         {
@@ -57,39 +69,25 @@ public static class BVH
                 {
                     primitiveId = spheres.Count;
                     primitiveType = (int)PrimitiveType.Sphere;
-                    spheres.Add(new Sphere
-                    {
-                        positionAndRadius = new Vector4(nodes[i].primitive.center.x, nodes[i].primitive.center.y, nodes[i].primitive.center.z, nodes[i].primitive.radius),
-                        matId = nodes[i].primitive.matId,
-                    });
+                    spheres.Add(nodes[i].primitive.CreateSphere());
                 }
                 else if (nodes[i].primitive.primitiveType == PrimitiveType.Quad)
                 {
                     primitiveId = quads.Count;
                     primitiveType = (int)PrimitiveType.Quad;
-                    quads.Add(new Quad
-                    {
-                        right = new Vector4(nodes[i].primitive.right.x, nodes[i].primitive.right.y, nodes[i].primitive.right.z, nodes[i].primitive.sqrWidth),
-                        forward = new Vector4(nodes[i].primitive.forward.x, nodes[i].primitive.forward.y, nodes[i].primitive.forward.z, nodes[i].primitive.sqrHeight),
-                        normal = nodes[i].primitive.normal,
-                        position = nodes[i].primitive.center,
-                        matId = nodes[i].primitive.matId,
-                    });
+                    quads.Add(nodes[i].primitive.CreateQuad());
+                }
+                else if (nodes[i].primitive.primitiveType == PrimitiveType.Cube)
+                {
+                    primitiveId = cubes.Count;
+                    primitiveType = (int)PrimitiveType.Cube;
+                    cubes.Add(nodes[i].primitive.CreateCube());
                 }
                 else if (nodes[i].primitive.primitiveType == PrimitiveType.Triangle)
                 {
                     primitiveId = triangles.Count;
                     primitiveType = (int)PrimitiveType.Triangle;
-                    triangles.Add(new Triangle
-                    {
-                        vertex0 = nodes[i].primitive.vertex0,
-                        vertex1 = nodes[i].primitive.vertex1,
-                        vertex2 = nodes[i].primitive.vertex2,
-                        normal0 = nodes[i].primitive.normal0,
-                        normal1 = nodes[i].primitive.normal1,
-                        normal2 = nodes[i].primitive.normal2,
-                        matId = nodes[i].primitive.matId,
-                    });
+                    triangles.Add(nodes[i].primitive.CreateTriangle());
                 }
             }
             tree.Add(new BVHNode
