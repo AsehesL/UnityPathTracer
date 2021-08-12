@@ -1,10 +1,23 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel PTMain
+#pragma multi_compile_local __ ENABLE_NEXT_EVENT_ESTIMATION
+#pragma multi_compile_local __ ENABLE_THIN_LENS
 
 #pragma enable_d3d11_debug_symbols 
 
-#define SAMPLE_DIRECT_LIGHT 1
 #define MAX_DEPTH 5
+
+#if ENABLE_NEXT_EVENT_ESTIMATION
+#define USE_NEXT_EVENT_ESTIMATION 1
+#else
+#define USE_NEXT_EVENT_ESTIMATION 0
+#endif
+
+#if ENABLE_THIN_LENS
+#define USE_THIN_LENS       1
+#else
+#define USE_THIN_LENS       0
+#endif
 
 #include "PathTracing.cginc"
 #include "BRDF.cginc"
@@ -51,15 +64,17 @@ int SimplePTShading(Ray ray, RaycastHit hit, out float3 radiance, out Ray newray
         return 1;
     }
 
-#if SAMPLE_DIRECT_LIGHT
+#if USE_NEXT_EVENT_ESTIMATION
     newray.start = hit.position;
     float3 ldir0, ldir1;
     float pdf0, pdf1;
     DirectionalSample(hit, ldir0, pdf0);
     CosineSample(hit, ldir1, pdf1);
 
-    float w0 = pdf0 / (pdf0 + pdf1);
-    float w1 = pdf1 / (pdf0 + pdf1);
+    float sqrPdf0 = pdf0 * pdf0;
+    float sqrPdf1 = pdf1 * pdf1;
+    float w0 = sqrPdf0 / (sqrPdf0 + sqrPdf1);
+    float w1 = sqrPdf1 / (sqrPdf0 + sqrPdf1);
     float w = 0;
     float pdf = 0;
 

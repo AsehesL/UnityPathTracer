@@ -21,7 +21,7 @@ float _ThinLensRadius;
 
 float4x4 _PathTracerCameraToWorld;
 
-#if SAMPLE_DIRECT_LIGHT
+#if USE_NEXT_EVENT_ESTIMATION
 void DirectionalSample(RaycastHit hit, out float3 lightDir, out float pdf)
 {
 	float3 p;
@@ -93,13 +93,28 @@ Ray ScreenSpaceToWorldRay(float2 uv)
 #endif
 }
 
-#if PRIMITIVE_USE_TEXTURE
-#define INITIALIZE_RAY_CAST_HIT \
+#if PRIMITIVE_HAS_TANGENT
+#define INITIALIZE_RAY_CAST_HIT_0 \
 	RaycastHit hit; \
 	hit.distance = PT_FLT_MAX; \
 	hit.position = 0; \
 	hit.normal = 0; \
 	hit.matId = 0; \
+	hit.tangent = 0; \
+
+#else
+#define INITIALIZE_RAY_CAST_HIT_0 \
+	RaycastHit hit; \
+	hit.distance = PT_FLT_MAX; \
+	hit.position = 0; \
+	hit.normal = 0; \
+	hit.matId = 0; \
+
+#endif
+
+#if PRIMITIVE_SAMPLE_TEXTURE
+#define INITIALIZE_RAY_CAST_HIT \
+	INITIALIZE_RAY_CAST_HIT_0 \
 	hit.uv = 0; \
 
 #else

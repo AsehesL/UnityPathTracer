@@ -1,0 +1,55 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel PTMain
+#pragma multi_compile_local __ ENABLE_NEXT_EVENT_ESTIMATION
+#pragma multi_compile_local __ ENABLE_THIN_LENS
+#pragma multi_compile_local __ ENABLE_SAMPLE_TEXTURE
+#pragma multi_compile_local __ ENABLE_TANGENT_SPACE
+
+#pragma enable_d3d11_debug_symbols 
+
+#define MAX_DEPTH 5
+
+#if ENABLE_NEXT_EVENT_ESTIMATION
+#define USE_NEXT_EVENT_ESTIMATION 1
+#else
+#define USE_NEXT_EVENT_ESTIMATION 0
+#endif
+
+#if ENABLE_THIN_LENS
+#define USE_THIN_LENS       1
+#else
+#define USE_THIN_LENS       0
+#endif
+
+#if ENABLE_SAMPLE_TEXTURE
+#define PRIMITIVE_SAMPLE_TEXTURE 1
+#else
+#define PRIMITIVE_SAMPLE_TEXTURE 0
+#endif
+
+#if ENABLE_TANGENT_SPACE
+#define PRIMITIVE_HAS_TANGENT 1
+#else
+#define PRIMITIVE_HAS_TANGENT 0
+#endif
+
+#include "PathTracing.cginc"
+#include "BRDF.cginc"
+#include "PBR.cginc"
+#include "SkyLight.cginc"
+
+RWTexture2D<float4> _Result;
+
+IMPLEMENT_PATH_TRACING(PBRPT, EnvSkyShading, PBRShading)
+
+[numthreads(32, 32, 1)]
+void PTMain(uint3 id : SV_DispatchThreadID)
+{
+    InitRandomSeed(id.x, id.y);
+
+    float2 uv = float2(((float)id.x + Rand()) / _ScreenWidth, ((float)id.y + Rand()) / _ScreenHeight);
+
+    float3 color = EXECUTE_PATH_TRACING(PBRPT, uv);
+
+    _Result[id.xy] = float4(color, 1.0);
+}

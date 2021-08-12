@@ -7,6 +7,9 @@ Shader "PathTracer/Preview/PTPreview Transparent"
         _Metallic ("Metallic", Range(0,1)) = 0.0
         [HDR]_EmissionColor("Emission", color) = (0,0,0,0)
         [Toggle] _UseTexture("UseTexture", float) = 0
+        _Texture("Texture", 2D) = "white" {}
+        _NormalTexture("Normal", 2D) = "bump" {}
+        _MroTexture("MRO", 2D) = "black" {}
     }
     SubShader
     {
@@ -23,6 +26,7 @@ Shader "PathTracer/Preview/PTPreview Transparent"
         struct Input
         {
             float3 worldPos;
+            float2 uv_Texture;
         };
 
         half _Glossiness;
@@ -30,6 +34,7 @@ Shader "PathTracer/Preview/PTPreview Transparent"
         fixed4 _Color;
         float4 _EmissionColor;
         float _UseTexture;
+        sampler2D _Texture;
 
         // Add instancing support for this shader. You need to check 'Enable Instancing' on materials that use the shader.
         // See https://docs.unity3d.com/Manual/GPUInstancing.html for more information about instancing.
@@ -43,8 +48,9 @@ Shader "PathTracer/Preview/PTPreview Transparent"
             float3 albedoColor = _Color.rgb;
             if (_UseTexture > 0.5)
             { 
+                albedoColor = tex2D(_Texture, IN.uv_Texture).rgb;
                 float2 c = floor(IN.worldPos.xz) * 0.5;
-                albedoColor = lerp(float3(0.02, 0.02, 0.02), albedoColor, frac(c.x + c.y) * 2);
+                albedoColor = lerp(0.5, 1, frac(c.x + c.y) * 2) * albedoColor;
             }
             o.Albedo = albedoColor;
             o.Metallic = _Metallic;

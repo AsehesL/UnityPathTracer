@@ -5,8 +5,29 @@
 #include "BRDF.cginc"
 #include "SkyLight.cginc"
 
-#if PRIMITIVE_USE_TEXTURE
-Texture2D<float4> _AlbedoTex;
+#if PRIMITIVE_SAMPLE_TEXTURE
+Texture2DArray<float4> _Textures;
+#if PRIMITIVE_HAS_TANGENT
+Texture2DArray<float4> _MROTextures;
+Texture2DArray<float4> _NormalTextures;
+#endif
+#endif
+
+#if PRIMITIVE_HAS_TANGENT
+float3 RecalculateNormal(float3 normal, float4 tangent, float3 normalColor)
+{
+    float3 wbnormal = normalize(cross(normal, tangent.xyz)) * tangent.w;
+
+    float3 rnormal = float3(normalColor.r * 2.0 - 1.0, normalColor.g * 2.0 - 1.0, normalColor.b * 2.0 - 1.0) * -1.0;
+    float3 worldnormal;
+    worldnormal.x = tangent.x * rnormal.x + wbnormal.x * rnormal.y + normal.x * rnormal.z;
+    worldnormal.y = tangent.y * rnormal.x + wbnormal.y * rnormal.y + normal.y * rnormal.z;
+    worldnormal.z = tangent.z * rnormal.x + wbnormal.z * rnormal.y + normal.z * rnormal.z;
+    worldnormal = normalize(worldnormal);
+    if (dot(worldnormal, normal) < 0)
+        worldnormal *= -1.0;
+    return worldnormal;
+}
 #endif
 
 int PBRShading(Ray ray, RaycastHit hit, out float3 radiance, out Ray newray)
@@ -18,13 +39,18 @@ int PBRShading(Ray ray, RaycastHit hit, out float3 radiance, out Ray newray)
     float3 albedoColor = mat.albedo.rgb;
     float3 rayDir = normalize(ray.direction);
 
-    if (mat.useTexture > 0)
+    float roughness = mat.roughness;
+    float metallic = mat.metallic;
+
+    if (mat.textureId >= 0)
     {
-#if PRIMITIVE_USE_TEXTURE
-        albedoColor = albedoColor * _AlbedoTex.SampleLevel(_LinearRepeat, hit.uv, 0).rgb;
+#if PRIMITIVE_SAMPLE_TEXTURE
+        albedoColor = albedoColor * _Textures.SampleLevel(_LinearRepeat, float3(hit.uv, mat.textureId), 0).rgb;
 #else
         float2 c = floor(hit.position.xz) * 0.5;
-        albedoColor = lerp(float3(0.02, 0.02, 0.02), albedoColor, frac(c.x + c.y) * 2);
+        float checkBoard = frac(c.x + c.y) * 2;
+        albedoColor = lerp(float3(0.02, 0.02, 0.02), albedoColor, checkBoard);
+        roughness = lerp(0.8, 0.01, checkBoard);
 #endif
     }
     if (mat.emission > 0)
@@ -35,12 +61,32 @@ int PBRShading(Ray ray, RaycastHit hit, out float3 radiance, out Ray newray)
         radiance = albedoColor.rgb * em;
         return -1;
     }
+
+    float4 worldNormal = hit.normal;
+
+#if PRIMITIVE_SAMPLE_TEXTURE
+#if PRIMITIVE_HAS_TANGENT
+    
+    if (mat.normalTextureId >= 0)
+    { 
+        float3 normalColor = _NormalTextures.SampleLevel(_LinearRepeat, float3(hit.uv, mat.normalTextureId), 0).rgb;
+        worldNormal.xyz = RecalculateNormal(hit.normal.xyz, hit.tangent, normalColor);
+    }
+    if (mat.mroTextureId >= 0)
+    {
+        float3 mroColor = _MROTextures.SampleLevel(_LinearRepeat, float3(hit.uv, mat.mroTextureId), 0).rgb;
+        metallic = mroColor.r * metallic;
+        roughness = mroColor.g * roughness;
+    }
+#endif
+#endif
+
     newray.start = hit.position;
     float russianRoulette = Rand();
     if (mat.albedo.a < 0.5)
     {
-        float eta = hit.normal.w < 0 ? 1.33f : 1.0f / 1.33f;
-        float3 hitNormal = CookTorrance_SampleH(hit.normal, mat.roughness);
+        float eta = worldNormal.w < 0 ? 1.33f : 1.0f / 1.33f;
+        float3 hitNormal = CookTorrance_SampleH(worldNormal.xyz, roughness);
         float3 litDir;
         float ndotv = dot(-rayDir, hitNormal);
         if (Refract(rayDir, hitNormal, eta, litDir) && Fresnel(ndotv, eta) <= russianRoulette)
@@ -56,12 +102,12 @@ int PBRShading(Ray ray, RaycastHit hit, out float3 radiance, out Ray newray)
         }
         return 1;
     }
-    float ndv = max(0.0f, dot(normalize(hit.normal.xyz), normalize(-ray.direction)));
-    float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedoColor.rgb, mat.metallic);
-    float3 fresnel = FresnelSchlick(ndv, F0, mat.roughness);
-    float fresnelAvg = (fresnel.r + fresnel.g + fresnel.b) / 3.0;
+    float ndv = max(0.0f, dot(normalize(worldNormal.xyz), normalize(-ray.direction)));
+    float3 F0 = lerp(float3(0.04, 0.04, 0.04), albedoColor.rgb, metallic);
+    float3 fresnel = FresnelSchlick(ndv, F0, roughness);
+    float fresnelAvg = fresnel.r * 0.22f + fresnel.g * 0.707f + fresnel.b * 0.071f;
 
-#if SAMPLE_DIRECT_LIGHT
+#if USE_NEXT_EVENT_ESTIMATION
     float3 directLdir;
     float directPDF;
     DirectionalSample(hit, directLdir, directPDF);
@@ -81,29 +127,31 @@ int PBRShading(Ray ray, RaycastHit hit, out float3 radiance, out Ray newray)
     float3 indirectBRDF;
     if (shadingType == SHADING_TYPE_DIFFUSE)
     {
-        float3 kd = (1.0 - mat.metallic) * albedoColor;
-        indirectLdir = Lambertatian_SampleH(hit.normal);
+        float3 kd = (1.0 - metallic) * albedoColor;
+        indirectLdir = Lambertatian_SampleH(worldNormal.xyz);
         indirectH = normalize(-rayDir + indirectLdir);
-        indirectBRDF = Lambertatian_SampleBRDF(indirectLdir, -rayDir, indirectH, hit.normal, hit.position, mat.roughness, indirectPDF) * kd;
-#if SAMPLE_DIRECT_LIGHT
-        directBRDF = Lambertatian_BRDF(directLdir, -rayDir, directH, hit.normal, hit.position, mat.roughness) * kd;
+        indirectBRDF = Lambertatian_SampleBRDF(indirectLdir, -rayDir, indirectH, worldNormal.xyz, hit.position, roughness, indirectPDF) * kd;
+#if USE_NEXT_EVENT_ESTIMATION
+        directBRDF = Lambertatian_BRDF(directLdir, -rayDir, directH, worldNormal.xyz, hit.position, roughness) * kd;
 #endif
     }
     else
     {
-        float3 ks = lerp(1, fresnel, mat.metallic);
-        indirectH = CookTorrance_SampleH(hit.normal, mat.roughness);
+        float3 ks = lerp(1, fresnel, metallic);
+        indirectH = CookTorrance_SampleH(worldNormal.xyz, roughness);
         indirectLdir = normalize(reflect(rayDir, indirectH));
-        indirectBRDF = CookTorrance_SampleBRDF(indirectLdir, -rayDir, indirectH, hit.normal, hit.position, mat.roughness, indirectPDF) * ks;
-#if SAMPLE_DIRECT_LIGHT
-        directBRDF = CookTorrance_BRDF(directLdir, -rayDir, directH, hit.normal, hit.position, mat.roughness) * ks;
+        indirectBRDF = CookTorrance_SampleBRDF(indirectLdir, -rayDir, indirectH, worldNormal.xyz, hit.position, roughness, indirectPDF) * ks;
+#if USE_NEXT_EVENT_ESTIMATION
+        directBRDF = CookTorrance_BRDF(directLdir, -rayDir, directH, worldNormal.xyz, hit.position, roughness) * ks;
 #endif
     }
 
-#if SAMPLE_DIRECT_LIGHT
+#if USE_NEXT_EVENT_ESTIMATION
     float pdf = 0.0f;
-    float w0 = indirectPDF / (indirectPDF + directPDF);
-    float w1 = directPDF / (indirectPDF + directPDF);
+    float sqrPdf0 = indirectPDF * indirectPDF;
+    float sqrPdf1 = directPDF * directPDF;
+    float w0 = sqrPdf0 / (sqrPdf0 + sqrPdf1);
+    float w1 = sqrPdf1 / (sqrPdf0 + sqrPdf1);
     float w = 0;
     float3 brdf;
 
@@ -122,17 +170,17 @@ int PBRShading(Ray ray, RaycastHit hit, out float3 radiance, out Ray newray)
         pdf = directPDF;
         brdf = directBRDF;
     }
-    if (pdf <= 0)
+    if (isnan(pdf) || pdf <= 0)
         radiance = 0;
     else
-        radiance = max(0, dot(hit.normal.xyz, newray.direction)) * brdf / pdf * w;
+        radiance = max(0, dot(worldNormal.xyz, newray.direction)) * brdf / pdf * w;
     return 1;
 #else
     newray.direction = indirectLdir;
     if (indirectPDF <= 0)
         radiance = 0;
     else
-        radiance = max(0, dot(hit.normal.xyz, newray.direction)) * indirectBRDF / indirectPDF;
+        radiance = max(0, dot(worldNormal.xyz, newray.direction)) * indirectBRDF / indirectPDF;
     return 1;
 #endif
 }

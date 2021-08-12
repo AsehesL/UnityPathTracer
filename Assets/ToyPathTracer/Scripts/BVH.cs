@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public struct BVHNode
+public struct LBVHNode
 {
     public Vector3 boundsMin;
     public Vector3 boundsMax;
@@ -12,26 +12,23 @@ public struct BVHNode
     public int primitiveType;
 }
 
-public static class BVH
+public class BVH
 {
-    class Node
+    public class Node
     {
         public Bounds bounds;
-        public int leftChild;
-        public int rightChild;
+        public Node leftChild;
+        public Node rightChild;
         public Primitive primitive;
     }
 
-    public static int Build(List<Primitive> primitives, out List<BVHNode> tree, out List<Sphere> spheres, out List<Quad> quads, out List<Cube> cubes, out List<Triangle> triangles)
+    public Node root;
+
+    public bool Build(List<Primitive> primitives)
     {
         if (primitives == null || primitives.Count == 0)
         {
-            tree = null;
-            spheres = null;
-            quads = null;
-            triangles = null;
-            cubes = null;
-            return -1;
+            return false;
         }
         Bounds bounds = primitives[0].bounds;
         for (int i = 1; i < primitives.Count; i++)
@@ -51,80 +48,29 @@ public static class BVH
         }
         Sort(primitives, sortedMortons);
 
-        List<Node> nodes = new List<Node>();
-        int rootIndex = GenerateHierarchy(primitives, sortedMortons, 0, sortedMortons.Count - 1, ref nodes);
+        root = GenerateHierarchy(primitives, sortedMortons, 0, sortedMortons.Count - 1);
 
-        tree = new List<BVHNode>();
-        spheres = new List<Sphere>();
-        quads = new List<Quad>();
-        cubes = new List<Cube>();
-        triangles = new List<Triangle>();
-        for (int i = 0; i < nodes.Count; i++)
-        {
-            int primitiveId = -1;
-            int primitiveType = 0;
-            if (nodes[i].primitive != null)
-            {
-                if (nodes[i].primitive.primitiveType == PrimitiveType.Sphere)
-                {
-                    primitiveId = spheres.Count;
-                    primitiveType = (int)PrimitiveType.Sphere;
-                    spheres.Add(nodes[i].primitive.CreateSphere());
-                }
-                else if (nodes[i].primitive.primitiveType == PrimitiveType.Quad)
-                {
-                    primitiveId = quads.Count;
-                    primitiveType = (int)PrimitiveType.Quad;
-                    quads.Add(nodes[i].primitive.CreateQuad());
-                }
-                else if (nodes[i].primitive.primitiveType == PrimitiveType.Cube)
-                {
-                    primitiveId = cubes.Count;
-                    primitiveType = (int)PrimitiveType.Cube;
-                    cubes.Add(nodes[i].primitive.CreateCube());
-                }
-                else if (nodes[i].primitive.primitiveType == PrimitiveType.Triangle)
-                {
-                    primitiveId = triangles.Count;
-                    primitiveType = (int)PrimitiveType.Triangle;
-                    triangles.Add(nodes[i].primitive.CreateTriangle());
-                }
-            }
-            tree.Add(new BVHNode
-            {
-                boundsMin = nodes[i].bounds.min,
-                boundsMax = nodes[i].bounds.max,
-                leftChild = nodes[i].leftChild,
-                rightChild = nodes[i].rightChild,
-                primitiveId = primitiveId,
-                primitiveType = primitiveType,
-            });
-        }
-        return rootIndex;
+        return root != null;
     }
 
-    private static int GenerateHierarchy(List<Primitive> sortedPrimitives, List<uint> sortedMortons, int first, int last, ref List<Node> tree)
+    private static Node GenerateHierarchy(List<Primitive> sortedPrimitives, List<uint> sortedMortons, int first, int last)
     {
         if (first == last)
         {
             Node node = new Node
             {
                 bounds = sortedPrimitives[first].bounds,
-                leftChild = -1,
-                rightChild = -1,
+                leftChild = null,
+                rightChild = null,
                 primitive = sortedPrimitives[first],
             };
-            tree.Add(node);
-            return tree.Count - 1;
+            return node;
         }
 
         int split = FindSplit(sortedMortons, first, last);
 
-        int child1 = GenerateHierarchy(sortedPrimitives, sortedMortons, first, split, ref tree);
-        int child2 = GenerateHierarchy(sortedPrimitives, sortedMortons, split + 1, last, ref tree);
-
-        Node child1Node = tree[child1];
-        Node child2Node = tree[child2];
+        Node child1Node = GenerateHierarchy(sortedPrimitives, sortedMortons, first, split);
+        Node child2Node = GenerateHierarchy(sortedPrimitives, sortedMortons, split + 1, last);
 
         Bounds childBounds = child1Node.bounds;
         childBounds.Encapsulate(child2Node.bounds);
@@ -132,13 +78,12 @@ public static class BVH
         Node child = new Node
         {
             bounds = childBounds,
-            leftChild = child1,
-            rightChild = child2,
+            leftChild = child1Node,
+            rightChild = child2Node,
             primitive = null,
         };
 
-        tree.Add(child);
-        return tree.Count - 1;
+        return child;
     }
 
     private static int FindSplit(List<uint> sortedMortons, int first, int last)

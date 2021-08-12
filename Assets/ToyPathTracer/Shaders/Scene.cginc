@@ -1,15 +1,15 @@
 #ifndef SCENE_CGINC
 #define SCENE_CGINC
 
-#ifndef SAMPLE_DIRECT_LIGHT
-#define SAMPLE_DIRECT_LIGHT 0
+#ifndef USE_NEXT_EVENT_ESTIMATION
+#define USE_NEXT_EVENT_ESTIMATION 0
 #endif
 
 #include "Geometry.cginc"
 #include "BVH.cginc"
 #include "Sampler.cginc"
 
-#if SAMPLE_DIRECT_LIGHT
+#if USE_NEXT_EVENT_ESTIMATION
 float4 _LightCenterAndRadius;
 float4 _LightRight;
 float4 _LightForward;
@@ -44,7 +44,7 @@ int SceneTracing(Ray ray, inout RaycastHit hit)
 {
 	int isHit = BVHTracing(ray, hit);
 
-#if SAMPLE_DIRECT_LIGHT
+#if USE_NEXT_EVENT_ESTIMATION
 	
 	if (_LightPrimivateType == PRIMITIVE_QUAD)
 	{

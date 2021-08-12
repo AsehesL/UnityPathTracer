@@ -463,7 +463,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 7242ee2fb705d274d8e2a512a3e88b93, type: 2}
+  - {fileID: 2100000, guid: c1763cfae6e33fd41ac97dce0f876691, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -827,21 +827,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e7210f748b1730a4b84bc42c8590a1a8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  enableFilter: 1
-  shader: {fileID: 7200000, guid: 655b503ecf278ce4498c069c1eda6480, type: 3}
-  kernelName: PTMain
-  sampleDirect: 0
+  enableTemporalFilter: 1
+  enableNEE: 1
+  enableSampleTexture: 1
+  enableThinLens: 0
   focal: 2.95
   radius: 0.08
+  shader: {fileID: 7200000, guid: 9109d2d7c1e68e144ac67b05c2ac8f49, type: 3}
+  kernelName: PTMain
   sigma: 0.8
   KSigma: 1.8
   threshold: 0.25
   textureParameters:
   - name: _SkyEnv
     texture: {fileID: 0}
-    cacheTexture: {fileID: 0}
-  - name: _AlbedoTex
-    texture: {fileID: 2800000, guid: db15f92cba251de4aabcc4a4865c2435, type: 3}
     cacheTexture: {fileID: 0}
   m_TimeFilterShader: {fileID: 4800000, guid: 9bccf8727d2771849a7dbc77150d0096, type: 3}
   m_DenoiseShader: {fileID: 4800000, guid: 91b96e0ce93312448aa5663cc76636bd, type: 3}

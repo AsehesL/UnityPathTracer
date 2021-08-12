@@ -9,39 +9,6 @@ public enum PrimitiveType
     Triangle = 3,
 }
 
-public struct PTMaterial
-{
-    public Color albedo;
-    public float roughness;
-    public float metallic;
-    public int emission;
-    public int useTexture;
-
-    public PTMaterial(Material material)
-    {
-        Color emissionColor = material.GetColor("_EmissionColor");
-        Color albedoColor = material.GetColor("_Color");
-        float smoothness = material.GetFloat("_Glossiness");
-        float metallic = material.GetFloat("_Metallic");
-        float use = material.GetFloat("_UseTexture");
-        useTexture = use > 0.5f ? 1 : -1;
-        if (emissionColor.grayscale > 0.01f)
-        {
-            emission = 1;
-            albedo = emissionColor;
-            roughness = 1;
-            this.metallic = 0;
-        }
-        else
-        {
-            albedo = albedoColor;
-            emission = -1;
-            roughness = 1.0f - smoothness;
-            this.metallic = metallic;
-        }
-    }
-}
-
 public struct Sphere
 {
     public Vector4 positionAndRadius;
@@ -65,6 +32,12 @@ public struct Triangle
     public Vector3 normal0;
     public Vector3 normal1;
     public Vector3 normal2;
+    public Vector2 uv0;
+    public Vector2 uv1;
+    public Vector2 uv2;
+    public Vector4 tangent0;
+    public Vector4 tangent1;
+    public Vector4 tangent2;
     public int matId;
 }
 
@@ -87,7 +60,9 @@ public abstract class Primitive
     {
         get;
     }
-    
+
+    public int matId;
+
     public virtual Quad CreateQuad()
     {
         return default(Quad);
@@ -111,8 +86,6 @@ public abstract class Primitive
     public abstract float GetArea();
 
     public abstract bool IsChanged();
-
-    public int matId;
 
     public static void CreatePrimitives(GameObject gameObject, ref Dictionary<Material, List<Primitive>> primitives)
     {
@@ -565,11 +538,15 @@ public class TrianglePrimitive : Primitive
 
     public override float GetArea()
     {
-        throw new System.NotImplementedException();
+        float a = Vector3.Distance(vertex0, vertex1);
+        float b = Vector3.Distance(vertex0, vertex2);
+        float c = Vector3.Distance(vertex1, vertex2);
+        float p = (a + b + c) * 0.5f;
+        return Mathf.Sqrt(p * (p - a) * (p - b) * (p - c));
     }
 
     public override bool IsChanged()
     {
-        throw new System.NotImplementedException();
+        return false;
     }
 }

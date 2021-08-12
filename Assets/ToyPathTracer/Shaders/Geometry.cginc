@@ -10,6 +10,12 @@ struct Triangle {
     float3 normal0;
     float3 normal1;
     float3 normal2;
+    float2 uv0;
+    float2 uv1;
+    float2 uv2; 
+    float4 tangent0;
+    float4 tangent1;
+    float4 tangent2;
 	int matId;
 };
 
@@ -70,10 +76,14 @@ int RaycastSphere(Ray ray, Sphere sphere, inout RaycastHit hit)
     }
     SetHitSurface(ray, ray.start + ray.direction * t, (tocenter + ray.direction * t) / sphere.positionAndRadius.w, hit);
 
-#if PRIMITIVE_USE_TEXTURE
+#if PRIMITIVE_SAMPLE_TEXTURE
     float theta = acos(-hit.normal.y);
     float phi = atan2(-hit.normal.z, hit.normal.x) + PT_PI;
     hit.uv = float2(phi * 0.5 * PT_INVPI, theta * PT_INVPI);
+#if PRIMITIVE_HAS_TANGENT
+    float3 tang = normalize(cross(float3(0, 1, 0), hit.normal));
+    hit.tangent = float4(tang.xyz, 1.0);
+#endif
 #endif
     hit.distance = t;
     hit.matId = sphere.matId;
@@ -98,9 +108,12 @@ int RaycastQuad(Ray ray, Quad quad, inout RaycastHit hit)
         return -1;
     SetHitSurface(ray, p, quad.normal, hit);
 
-#if PRIMITIVE_USE_TEXTURE
+#if PRIMITIVE_SAMPLE_TEXTURE
     float3 lp = hit.position - quad.position;
     hit.uv = float2(dot(lp, quad.forward.xyz) / length(quad.forward), -dot(lp, quad.right.xyz) / length(quad.right));
+#if PRIMITIVE_HAS_TANGENT
+    hit.tangent = float4(normalize(quad.right).xyz, 1.0);
+#endif
 #endif
 
     hit.distance = t;
@@ -113,6 +126,8 @@ int RaycastCube(Ray ray, Cube cube, inout RaycastHit hit)
 {
     float tmin = PT_FLT_DELTA;
     float tmax = hit.distance;
+    float ttmin = 0;
+    float t1, t2;
 
     float3 bmin = -cube.size * 0.5;
     float3 bmax = cube.size * 0.5;
@@ -120,123 +135,77 @@ int RaycastCube(Ray ray, Cube cube, inout RaycastHit hit)
     float3 rayOrigin = mul(cube.worldToLocal, float4(ray.start.xyz, 1.0)).xyz;
     float3 rayDir = mul((float3x3)cube.worldToLocal, ray.direction.xyz).xyz;
 
-    float3 normal = 0;
+    int n = 0;
 
-    for (int i = 0; i < 3; i++)
-    {
-        float3 n = float3(i == 0 ? -1 : 0, i == 1 ? -1 : 0, i == 2 ? -1 : 0);
-        if (abs(rayDir[i]) < PT_FLT_EPSILON)
+    if (abs(rayDir.x) > PT_FLT_EPSILON) {
+        t1 = (bmin.x - rayOrigin.x) / rayDir.x;
+        t2 = (bmax.x - rayOrigin.x) / rayDir.x;
+        ttmin = min(t1, t2);
+        if (ttmin > tmin)
         {
-            if (rayOrigin[i] < bmin[i] || rayOrigin[i] > bmax[i])
-                return -1;
+            tmin = ttmin;
+            n = 1;
         }
-        else
+        tmax = min(tmax, max(t1, t2));
+    }
+    if (abs(rayDir.y) > PT_FLT_EPSILON) {
+        t1 = (bmin.y - rayOrigin.y) / rayDir.y;
+        t2 = (bmax.y - rayOrigin.y) / rayDir.y;
+        ttmin = min(t1, t2);
+        if (ttmin > tmin)
         {
-            float ood = 1.0 / rayDir[i];
-            float t1 = (bmin[i] - rayOrigin[i]) * ood;
-            float t2 = (bmax[i] - rayOrigin[i]) * ood;
-
-            if (t1 > t2)
-            {
-                float t = t2;
-                t2 = t1;
-                t1 = t;
-                n *= -1;
-            }
-
-            if (t1 > tmin)
-            {
-                tmin = t1;
-
-                normal = n;
-            }
-
-            if (t2 < tmax)
-            {
-                tmax = t2;
-            }
-
-            if (tmin > tmax)
-                return -1;
+            tmin = ttmin;
+            n = 2;
         }
+        tmax = min(tmax, max(t1, t2));
+    }
+    if (abs(rayDir.z) > PT_FLT_EPSILON) {
+        t1 = (bmin.z - rayOrigin.z) / rayDir.z;
+        t2 = (bmax.z - rayOrigin.z) / rayDir.z;
+        ttmin = min(t1, t2);
+        if (ttmin > tmin)
+        {
+            tmin = ttmin;
+            n = 3;
+        }
+        tmax = min(tmax, max(t1, t2));
+    }
+    if (tmax < tmin) {
+        return -1;
     }
 
-    float3 hitP = mul(cube.localToWorld, float4(rayOrigin.xyz + rayDir * tmin, 1.0));
+    float3 hitP = rayOrigin.xyz + rayDir * tmin;
+    float3 normal = sign(hitP);
+    if (n == 1)
+    {
+        normal.yz = 0;
+    }
+    else if (n == 2)
+    {
+        normal.xz = 0;
+    }
+    else if (n == 3)
+    {
+        normal.xy = 0;
+    }
+
+    hitP = mul(cube.localToWorld, float4(hitP, 1.0)).xyz;
     normal = mul((float3x3)cube.localToWorld, normal).xyz;
     SetHitSurface(ray, hitP, normal, hit);
+    hit.position += hit.normal * PT_FLT_DELTA * 2;
 
-#if PRIMITIVE_USE_TEXTURE
+#if PRIMITIVE_SAMPLE_TEXTURE
     hit.uv = float2(0,0);
+#if PRIMITIVE_HAS_TANGENT
+    hit.tangent = float4(0,0,0,1);
+#endif
 #endif
 
     hit.distance = tmin;
     hit.matId = cube.matId;
 
-    return true;
+    return 1;
 }
-
-//int RaycastTriangle(Ray ray, Triangle tri, inout RaycastHit hit)
-//{
-//    float3 e1 = tri.vertex1 - tri.vertex0;
-//    float3 e2 = tri.vertex2 - tri.vertex0;
-//
-//    float2 uv = 0;
-//
-//    float3 n = cross(e1, e2);
-//    float ndv = dot(ray.direction, n);
-//
-//    float3 p = cross(ray.direction, e2);
-//
-//    float det = dot(e1, p);
-//    float3 t = float3(0, 0, 0);
-//    if (det > 0.0)
-//    {
-//        t = ray.start - tri.vertex0;
-//    }
-//    else
-//    {
-//        t = tri.vertex0 - ray.start;
-//        det = -det;
-//    }
-//    if (det < PT_FLT_EPSILON)
-//    {
-//        return -1;
-//    }
-//
-//    uv.x = dot(t, p);
-//    if (uv.x < 0.0f || uv.x > det)
-//        return -1;
-//
-//    float3 q = cross(t, e1);
-//
-//    uv.y = dot(ray.direction, q);
-//    if (uv.y < 0.0f || uv.x + uv.y > det)
-//        return -1;
-//
-//    float myt = dot(e2, q);
-//
-//    float finvdet = 1.0f / det;
-//    myt *= finvdet;
-//    if (myt < PT_FLT_DELTA)
-//        return -1;
-//    if (myt > hit.distance)
-//        return -1;
-//
-//    uv.x *= finvdet;
-//    uv.y *= finvdet;
-//
-//    hit.distance = myt;
-//    hit.position = ray.start + ray.direction * hit.distance;
-//    hit.normal.xyz = (1.0 - uv.x - uv.y) * tri.normal0 + uv.x * tri.normal1 + uv.y * tri.normal2;
-//    hit.normal.xyz = 1;
-//    hit.matId = tri.matId;
-//    if (ndv < 0)
-//    {
-//        hit.normal *= -1;
-//    }
-//
-//    return 1;
-//}
 
 int RaycastTriangle(Ray ray, Triangle tri, inout RaycastHit hit)
 {
@@ -263,8 +232,11 @@ int RaycastTriangle(Ray ray, Triangle tri, inout RaycastHit hit)
 
     SetHitSurface(ray, hitP, normal, hit);
 
-#if PRIMITIVE_USE_TEXTURE
-    hit.uv = float2(0, 0);
+#if PRIMITIVE_SAMPLE_TEXTURE
+    hit.uv = (1.0 - u - v) * tri.uv0 + u * tri.uv1 + v * tri.uv2;
+#if PRIMITIVE_HAS_TANGENT
+    hit.tangent = (1.0 - u - v) * tri.tangent0 + u * tri.tangent1 + v * tri.tangent2;
+#endif
 #endif
 
     hit.distance = t;

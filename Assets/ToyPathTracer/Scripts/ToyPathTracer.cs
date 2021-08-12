@@ -30,17 +30,22 @@ public class ToyPathTracerTextureParameter
 
 public class ToyPathTracer : MonoBehaviour
 {
-    public bool enableFilter = true;
+    public bool enableTemporalFilter = true;
+
+    public bool enableNEE;
+
+    public bool enableSampleTexture;
+
+    public bool enableTangentSpace;
+
+    public bool enableThinLens;
+
+    public float focal;
+    public float radius;
 
     public ComputeShader shader;
 
     public string kernelName;
-
-    public bool sampleDirect;
-
-    public float focal;
-
-    public float radius;
 
     public float sigma = 0.8f;
     public float KSigma = 1.8f;
@@ -74,7 +79,7 @@ public class ToyPathTracer : MonoBehaviour
 
     private void Start()
     {
-        m_Pipeline = new ToyPathTracingPipeline(gameObject.GetComponent<Camera>(), shader, kernelName, sampleDirect);
+        m_Pipeline = new ToyPathTracingPipeline(gameObject.GetComponent<Camera>(), shader, kernelName, enableNEE, enableThinLens, enableSampleTexture, enableTangentSpace);
 
         m_Pipeline.BuildPipeline();
 
@@ -135,7 +140,7 @@ public class ToyPathTracer : MonoBehaviour
         RenderTexture rt = m_Pipeline.ExecutePipeline();
         if (rt)
         {
-            if (!enableFilter || !m_TimeFilterMat)
+            if (!enableTemporalFilter || !m_TimeFilterMat)
             {
                 DeNoise(rt, destination);
                 if (m_PreviousFrame)
